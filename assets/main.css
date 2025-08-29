@@ -1,0 +1,269 @@
+/* App-wide styling */
+body {
+    background-color: #0f1116;
+    color: #ffffff;
+    font-family: Menlo, Monospace;
+    font-size: small;
+    /* border: white 1px solid; */
+}
+
+nav {
+    display: flex;
+    flex-direction: row;
+    /* border: yellow 1px solid; */
+    margin: 1mm;
+    position: sticky;
+    top: 0;
+}
+
+nav a {
+    color: gold;
+    background-color: #404040;
+    font-weight: bold;
+    text-decoration: none;
+    margin: 0 5px;
+    padding: 5px 15px;
+    border-radius: 3px 3px 0 0;
+}
+
+a:hover, a:focus, a:active {
+    color: black;
+    background-color: gold;
+    cursor: pointer;
+}
+
+#main {
+    display: flex;
+    flex-direction: column;
+    justify-content: left;
+    align-items: left;
+    /* border: red 1px solid; */
+    margin: 2mm;
+}
+
+#menu {
+    /* border: magenta 1px solid; */
+    margin: 1mm;
+}
+
+#sys {
+    display: flex;
+    flex-direction: row;
+    justify-content: left;
+    align-items: left;
+    /* border: yellow 1px solid; */
+    border: white 1px solid;
+    border-style: solid none none none;
+    margin: 1mm;
+    position: relative;
+}
+
+#authority {
+    /* border: lightblue 1px solid; */
+    border: white 1px solid;
+    border-style: solid none none none;
+    margin: 1mm;
+}
+
+#summary {
+    /* border: silver 1px solid; */
+    margin: 1mm;
+}
+
+#log {
+    height: 11vh;
+    /* border: aquamarine 1px solid; */
+    margin: 1mm;
+    overflow: scroll;
+}
+
+#accounts {
+    width: 560px;
+    display: flex;
+    flex-direction: column;
+    /* border: cyan 1px solid; */
+    border: white 1px solid;
+    border-style: none solid none none;
+    margin: 1mm;
+    position: relative;
+}
+
+#account_list {
+    text-align: left;
+    /* border: pink 1px solid; */
+    margin: 1mm;
+}
+
+#account_state {
+    text-align: left;
+    /* border: brown 1px solid; */
+    margin: 1mm;
+}
+
+#exchanges {
+    text-align: left;
+    /* border: purple 1px solid; */
+    border: white 1px solid;
+    border-style: solid none none none;
+    margin: 1mm;
+    position: absolute;
+    inset: auto 0 0 0;
+}
+
+#lots {
+    height: 65vh;
+    text-align: left;
+    /* border: green 1px solid; */
+    margin: 1mm;
+    overflow: auto;
+}
+
+#tokens {
+    height: 65vh;
+    text-align: left;
+    /* border: aquamarine 1px solid; */
+    border: white 1px solid;
+    border-style: none none none solid;
+    margin: 1mm;
+    overflow: auto;
+    position: absolute;
+    inset: 0 0 auto auto;
+}
+
+#disposed {
+    height: 80vh;
+    border: cyan 1px solid;
+    margin: 1mm;
+    overflow: scroll;
+}
+
+#links a {
+    color: white;
+    text-decoration: none;
+    margin-top: 20px;
+    margin: 10px 0px;
+    border: white 1px solid;
+    border-radius: 5px;
+    padding: 10px;
+}
+
+#links a:hover {
+    background-color: #1f1f1f;
+    cursor: pointer;
+}
+
+#header {
+    max-width: 1200px;
+}
+
+button {
+    margin: 1mm;
+}
+
+input#amount {
+    padding: 1mm;
+    width: 7vw;
+}
+
+input#authority {
+    padding: 1mm;
+    width: 26vw;
+}
+
+input#recipient {
+    padding: 1mm;
+    width: 44vw;
+}
+
+input {
+    padding: 1mm;
+    width: 59vw;
+}
+
+label {
+    padding: 1mm;
+    padding-left: 2mm;
+}
+
+ul {
+    list-style-type: none;
+    margin: 2px;
+    padding: 0px;
+}
+
+li {
+    padding: 1px;
+}
+
+li.selected {
+    color: yellow;
+}
+
+pre {
+    font-family: Menlo, Monospace;
+    font-size: 100%;
+}
+
+table {
+    position: relative;
+    table-layout: auto;
+    width: auto;
+    th {
+        padding: 7px;
+        position: sticky;
+        top: 0;
+        width: 8em;
+        text-align: center;
+        background: white;
+        color: black;
+    }
+    th#lot_number {
+        width: 5em;
+    }
+    th#lot_amount {
+        width: 12em;
+    }
+    th#lot_term {
+        width: 3em;
+    }
+    tr:nth-child(even) {
+        background: #404040;
+    }
+    tr.selected {
+        color: yellow;
+        background: blue;
+    }
+    tr.token {
+        background: #0f1116;
+    }
+    td {
+        padding: 7px;
+        width: 8em;
+        text-align: right;
+    }
+    td.lot_number {
+        width: 5em;
+    }
+    td.lot_date {
+        text-align: center;
+    }
+    td.lot_amount {
+        width: 12em;
+    }
+    td.lot_term {
+        width: 3em;
+        text-align: center;
+    }
+    td:hover {
+        background: red;
+    }
+    td:nth-child(n + 2), th:nth-child(n + 2) {
+        border-left: 1px solid white;
+    }
+    td.token {
+        border-left: none;
+        padding: 2px;
+        text-align: left;
+        width: 6em;
+    }
+}
