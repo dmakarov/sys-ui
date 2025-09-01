@@ -78,7 +78,7 @@ a:hover, a:focus, a:active {
 }
 
 #accounts {
-    width: 560px;
+    width: 570px;
     display: flex;
     flex-direction: column;
     /* border: cyan 1px solid; */
