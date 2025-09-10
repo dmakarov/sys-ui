@@ -524,8 +524,8 @@ pub fn Lots() -> Element {
         let prices = use_context::<GlobalState>().prices.read().clone();
         let price = *prices.get(&account.token.to_string()).unwrap_or(&0f64);
         let mut lots = account.lots;
-        if let Some(sorting) = state.read().sorted.clone() {
-            match sorting {
+        if let Some(ref sorting) = state.read().sorted {
+            match *sorting {
                 Sorting::Lot(d) => {
                     lots.sort_by(|a, b| {
                         if d {
@@ -782,7 +782,7 @@ pub fn Input() -> Element {
                   value: amount,
                   oninput: move |event| {
                       let value = event.value();
-                      if !value.ends_with(".") {
+                      if !value.ends_with(".") && !(value.contains(".") && value.ends_with("0")) {
                           state.write().amount = value.parse::<f64>().ok();
                       }
                   }
@@ -1089,6 +1089,8 @@ async fn sync() {
     }
     let bytes = buffer.into_inner().unwrap();
     state.log = Some(String::from_utf8(bytes).unwrap());
+    let mut xupdate = use_context::<GlobalState>().xupdate;
+    *xupdate.write() = true; // value doesn't matter, just need to rewrite it
 }
 
 async fn split() {
@@ -1272,6 +1274,8 @@ async fn withdraw() {
             ));
             return;
         }
+        *selected_account.write() = None;
+        state.selected.clear();
         if let Err(e) = std::rc::Rc::get_mut(&mut db.write()).unwrap().record_drop(
             account.address,
             account.token,
@@ -1281,8 +1285,6 @@ async fn withdraw() {
         ) {
             state.log = Some(format!("Failed to drop lots: {e:#?}"));
         }
-        *selected_account.write() = None;
-        state.selected.clear();
         let bytes = buffer.into_inner().unwrap();
         state.log = Some(String::from_utf8(bytes).unwrap());
         // Force fetching account data from exchange
