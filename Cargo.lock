@@ -5422,7 +5422,7 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af1844ef2428cc3e1cb900be36181049ef3d3193c63e43026cfe202983b27a56"
 dependencies = [
- "proc-macro-crate 2.0.0",
+ "proc-macro-crate 1.3.1",
  "proc-macro2",
  "quote",
  "syn 2.0.95",
@@ -11573,7 +11573,7 @@ dependencies = [
 [[package]]
 name = "sys"
 version = "0.1.0"
-source = "git+https://github.com/dmakarov/sys.git?branch=local#f0e8b39c1f47bfdeba800deea8845736411965c8"
+source = "git+https://github.com/dmakarov/sys.git?branch=local#6b48ca066d5d92b8eab5678f822405fbe8b5a680"
 dependencies = [
  "arrayref",
  "async-recursion",
