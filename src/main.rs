@@ -299,11 +299,11 @@ pub fn AccountsList() -> Element {
 #[component]
 pub fn AccountState() -> Element {
     let account = use_context::<GlobalState>().account.read().clone();
+    let rpc = use_context::<GlobalState>().rpc;
 
     if let Some(account) = account {
         let content = account.description.to_string();
         let mut buffer = std::io::BufWriter::new(Vec::new());
-        let rpc = use_context::<GlobalState>().rpc;
         if get_account_state(&rpc.read(), account.token, account.address, &mut buffer).is_ok() {
             let bytes = buffer.into_inner().unwrap();
             let account_state = String::from_utf8(bytes).unwrap();
@@ -497,9 +497,9 @@ fn PaymentMethodsItem(exchange: Exchange, method: PaymentInfo) -> Element {
 pub fn Lots() -> Element {
     let mut state = use_context::<GlobalState>().state;
     let account = use_context::<GlobalState>().account.read().clone();
+    let prices = use_context::<GlobalState>().prices.read().clone();
 
     if let Some(account) = account {
-        let prices = use_context::<GlobalState>().prices.read().clone();
         let price = *prices.get(&account.token.to_string()).unwrap_or(&0f64);
         let mut lots = account.lots;
         if let Some(ref sorting) = state.read().sorted {
@@ -683,11 +683,12 @@ fn LotItem(token: MaybeToken, lot: Lot, price: f64) -> Element {
     } else {
         "regular"
     };
+    let account = use_context::<GlobalState>().account.read().clone();
     rsx! {
         tr {
             class: kind,
             onclick: move |event| {
-                selection(lot.lot_number, &event);
+                selection(lot.lot_number, &event, &account);
             },
             td { class: "lot_number", "{lot_number}" }
             td { class: "lot_date", "{lot_date}" }
@@ -804,8 +805,7 @@ pub fn Summary() -> Element {
     }
     summary = format!("{summary})");
     if !state.read().selected.is_empty() {
-        let account = use_context::<GlobalState>().account.read().clone();
-        if let Some(account) = account {
+        if let Some(account) = selected_account {
             let selected_lots_value = account
                 .lots
                 .iter()
@@ -959,10 +959,9 @@ fn PageNotFound(route: Vec<String>) -> Element {
     }
 }
 
-fn selection(lot: usize, event: &Event<MouseData>) {
+fn selection(lot: usize, event: &Event<MouseData>, account: &Option<TrackedAccount>) {
     let mut state = use_context::<GlobalState>().state;
     let mut state = state.write();
-    let account = use_context::<GlobalState>().account.read().clone();
     let modifiers = event.data().modifiers();
     if modifiers.shift() {
         if let Some(account) = account {
@@ -1177,6 +1176,7 @@ async fn withdraw() {
     let mut state = state.write();
     state.log = None;
     let mut selected_account = use_context::<GlobalState>().account;
+    let mut xupdate = use_context::<GlobalState>().xupdate;
     if state.selected.is_empty() || selected_account.read().is_none() {
         state.log = Some("Select account and lots to withdraw".to_string());
         return;
@@ -1253,7 +1253,6 @@ async fn withdraw() {
         let bytes = buffer.into_inner().unwrap();
         state.log = Some(String::from_utf8(bytes).unwrap());
         // Force fetching account data from exchange
-        let mut xupdate = use_context::<GlobalState>().xupdate;
         *xupdate.write() = true; // value doesn't matter, just need to rewrite it
         return;
     }
@@ -1909,9 +1908,9 @@ pub fn get_account_state<W: Write>(
 enum Action {}
 
 async fn update_prices(mut _rx: UnboundedReceiver<Action>) {
+    let rpc = use_context::<GlobalState>().rpc;
+    let mut prices = use_context::<GlobalState>().prices;
     loop {
-        let rpc = use_context::<GlobalState>().rpc;
-        let mut prices = use_context::<GlobalState>().prices;
         let mut tokens = vec![MaybeToken::from(None)];
         tokens.append(
             &mut Token::VARIANTS
