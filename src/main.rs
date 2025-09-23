@@ -188,9 +188,9 @@ pub fn Main() -> Element {
     rsx! {
         Menu {}
         div { id: "sys",
-              Accounts {}
-              Lots {}
-              Tokens {}
+            Accounts {}
+            Lots {}
+            Tokens {}
         }
         Input {}
         Summary {}
@@ -204,83 +204,67 @@ pub fn Menu() -> Element {
     let url = state.read().url.clone().unwrap_or_default();
     rsx! {
         div { id: "menu",
-              button {
-                  onclick: move |_| {
-                      spawn(async move {
-                          sync().await
-                      });
-                  },
-                  "Sync"
-              }
-              button {
-                  onclick: move |_| {
-                      spawn(async move {
-                          split().await
-                      });
-                  },
-                  "Split"
-              }
-              button {
-                  onclick: move |_| {
-                      spawn(async move {
-                          deactivate().await
-                      });
-                  },
-                  "Deactivate"
-              }
-              button {
-                  onclick: move |_| {
-                      spawn(async move {
-                          withdraw().await
-                      });
-                  },
-                  "Withdraw"
-              }
-              button {
-                  onclick: move |_| {
-                      spawn(async move {
-                          delegate().await
-                      });
-                  },
-                  "Delegate"
-              }
-              button {
-                  onclick: move |_| {
-                      spawn(async move {
-                          swap().await
-                      });
-                  },
-                  "Swap"
-              }
-              button {
-                  onclick: move |_| {
-                      spawn(async move {
-                          merge().await
-                      });
-                  },
-                  "Merge"
-              }
-              button {
-                  onclick: move |_| {
-                      spawn(async move {
-                          disburse().await
-                      });
-                  },
-                  "Disburse"
-              }
-              label {r#for: "json_rpc_url", "url:"}
-              input {
-                  id: "json_rpc_url",
-                  name: "json_rpc_url",
-                  value: url,
-                  oninput: move |event| {
-                      let mut state = state.write();
-                      let value = event.value();
-                      state.url = Some(value.clone());
-                      let mut rpc = use_context::<GlobalState>().rpc;
-                      *rpc.write() = std::rc::Rc::new(RpcClients::new(value, None, None));
-                  }
-              }
+            button {
+                onclick: move |_| {
+                    spawn(async move { sync().await });
+                },
+                "Sync"
+            }
+            button {
+                onclick: move |_| {
+                    spawn(async move { split().await });
+                },
+                "Split"
+            }
+            button {
+                onclick: move |_| {
+                    spawn(async move { deactivate().await });
+                },
+                "Deactivate"
+            }
+            button {
+                onclick: move |_| {
+                    spawn(async move { withdraw().await });
+                },
+                "Withdraw"
+            }
+            button {
+                onclick: move |_| {
+                    spawn(async move { delegate().await });
+                },
+                "Delegate"
+            }
+            button {
+                onclick: move |_| {
+                    spawn(async move { swap().await });
+                },
+                "Swap"
+            }
+            button {
+                onclick: move |_| {
+                    spawn(async move { merge().await });
+                },
+                "Merge"
+            }
+            button {
+                onclick: move |_| {
+                    spawn(async move { disburse().await });
+                },
+                "Disburse"
+            }
+            label { r#for: "json_rpc_url", "url:" }
+            input {
+                id: "json_rpc_url",
+                name: "json_rpc_url",
+                value: url,
+                oninput: move |event| {
+                    let mut state = state.write();
+                    let value = event.value();
+                    state.url = Some(value.clone());
+                    let mut rpc = use_context::<GlobalState>().rpc;
+                    *rpc.write() = std::rc::Rc::new(RpcClients::new(value, None, None));
+                },
+            }
         }
     }
 }
@@ -289,9 +273,9 @@ pub fn Menu() -> Element {
 pub fn Accounts() -> Element {
     rsx! {
         div { id: "accounts",
-              AccountsList {}
-              AccountState {}
-              Exchanges {}
+            AccountsList {}
+            AccountState {}
+            Exchanges {}
         }
     }
 }
@@ -325,23 +309,21 @@ pub fn AccountState() -> Element {
             let account_state = String::from_utf8(bytes).unwrap();
             rsx! {
                 div { id: "account_state",
-                      pre {
-                          "{content}",
-                          br {},
-                          "{account_state}"
-                      }
+                    pre {
+                        "{content}"
+                        br {}
+                        "{account_state}"
+                    }
                 }
             }
         } else {
             rsx! {
-                div { id: "account_state",
-                      "{content}"
-                }
+                div { id: "account_state", "{content}" }
             }
         }
     } else {
         rsx! {
-            div { id: "account_state"}
+            div { id: "account_state" }
         }
     }
 }
@@ -385,28 +367,27 @@ fn ExchangeAccounts(exchange: Exchange) -> Element {
     });
     let accs = accounts.read();
     if accs.is_none() {
-        return rsx! {div {"Accounts"}};
+        return rsx! {
+            div { "Accounts" }
+        };
     }
     let accs = accs.as_ref().unwrap();
     if accs.is_err() {
-        return rsx! {div {"Accounts"}};
+        return rsx! {
+            div { "Accounts" }
+        };
     }
     rsx! {
-            div {
-                "Accounts"
-            }
-            div {
-                ul {
-                    for acc in accs.as_ref().unwrap() {
-                        if acc.value.parse::<f64>().unwrap() > 0. || acc.currency == "USDC" {
-                            ExchangeAccountsItem {
-                                exchange: exchange.clone(),
-                                account: acc.clone(),
-                            }
-                        }
+        div { "Accounts" }
+        div {
+            ul {
+                for acc in accs.as_ref().unwrap() {
+                    if acc.value.parse::<f64>().unwrap() > 0. || acc.currency == "USDC" {
+                        ExchangeAccountsItem { exchange: exchange.clone(), account: acc.clone() }
                     }
                 }
             }
+        }
     }
 }
 
@@ -442,12 +423,11 @@ fn ExchangeAccountsItem(exchange: Exchange, account: AccountInfo) -> Element {
                 };
                 let mut xaccount = use_context::<GlobalState>().xaccount;
                 let mut state = use_context::<GlobalState>().state;
-                (*xaccount.write(), state.write().recipient) =
-                    if is_meta && kind == "selected" {
-                        (None, None)
-                    } else {
-                        (Some((exchange, account.uuid.clone())), address.clone())
-                    };
+                (*xaccount.write(), state.write().recipient) = if is_meta && kind == "selected" {
+                    (None, None)
+                } else {
+                    (Some((exchange, account.uuid.clone())), address.clone())
+                };
             },
             "{account.name} {account.currency} {account.value}"
         }
@@ -464,23 +444,22 @@ fn PaymentMethods(exchange: Exchange) -> Element {
     });
     let methods = payment_methods.read();
     if methods.is_none() {
-        return rsx! {div {"Payment methods"}};
+        return rsx! {
+            div { "Payment methods" }
+        };
     }
     let methods = methods.as_ref().unwrap();
     if methods.is_err() {
-        return rsx! {div {"Payment methods"}};
+        return rsx! {
+            div { "Payment methods" }
+        };
     }
     rsx! {
-        div {
-            "Payment methods"
-        }
+        div { "Payment methods" }
         div {
             ul {
                 for method in methods.as_ref().unwrap() {
-                    PaymentMethodsItem {
-                        exchange: exchange.clone(),
-                        method: method.clone(),
-                    }
+                    PaymentMethodsItem { exchange: exchange.clone(), method: method.clone() }
                 }
             }
         }
@@ -503,12 +482,11 @@ fn PaymentMethodsItem(exchange: Exchange, method: PaymentInfo) -> Element {
                 let modifiers = event.data().modifiers();
                 let is_meta = modifiers.meta() || (modifiers.alt() && modifiers.ctrl());
                 let mut selected_method = use_context::<GlobalState>().xpmethod;
-                *selected_method.write() =
-                    if is_meta && kind == "selected" {
-                        None
-                    } else {
-                        Some((exchange, method.id.clone()))
-                    };
+                *selected_method.write() = if is_meta && kind == "selected" {
+                    None
+                } else {
+                    Some((exchange, method.id.clone()))
+                };
             },
             "{method.name} {method.r#type} {method.currency}"
         }
@@ -565,8 +543,7 @@ pub fn Lots() -> Element {
             }
         }
         rsx! {
-            div {
-                id: "lots",
+            div { id: "lots",
                 table {
                     tr {
                         th {
@@ -579,8 +556,8 @@ pub fn Lots() -> Element {
                                 }
                                 state.write().sorted = Some(Sorting::Lot(v));
                             },
-                            "Lot",
-                        },
+                            "Lot"
+                        }
                         th {
                             onclick: move |_| {
                                 let sorted = state.read().sorted.clone();
@@ -590,8 +567,8 @@ pub fn Lots() -> Element {
                                 }
                                 state.write().sorted = Some(Sorting::Date(v));
                             },
-                            "Date",
-                        },
+                            "Date"
+                        }
                         th {
                             id: "lot_amount",
                             onclick: move |_| {
@@ -602,8 +579,8 @@ pub fn Lots() -> Element {
                                 }
                                 state.write().sorted = Some(Sorting::Amount(v));
                             },
-                            "Amount",
-                        },
+                            "Amount"
+                        }
                         th {
                             onclick: move |_| {
                                 let sorted = state.read().sorted.clone();
@@ -613,15 +590,10 @@ pub fn Lots() -> Element {
                                 }
                                 state.write().sorted = Some(Sorting::Price(v));
                             },
-                            "Price",
-                        },
-                        th {
-                            id: "lot_term",
-                            "Term",
-                        },
-                        th {
-                            "Gain",
-                        },
+                            "Price"
+                        }
+                        th { id: "lot_term", "Term" }
+                        th { "Gain" }
                     }
                     for lot in lots {
                         LotItem {
@@ -657,27 +629,27 @@ fn AccountItem(account: TrackedAccount) -> Element {
         }
     }
     rsx! {
-        li { class: kind,
-             onclick: move |event| {
-                 let modifiers = event.data().modifiers();
-                 let mut state = state.write();
-                 if modifiers == Modifiers::ALT {
-                     state.recipient = Some(account.address.to_string());
-                     return;
-                 }
-                 let is_meta = modifiers.meta() || (modifiers.alt() && modifiers.ctrl());
-                 if is_meta || kind == "regular" {
-                     state.selected.clear();
-                 }
-                 let mut selected_account = use_context::<GlobalState>().account;
-                 *selected_account.write() =
-                     if is_meta && kind == "selected" {
-                         None
-                     } else {
-                         Some(account.clone())
-                     };
-             },
-             "{address}"
+        li {
+            class: kind,
+            onclick: move |event| {
+                let modifiers = event.data().modifiers();
+                let mut state = state.write();
+                if modifiers == Modifiers::ALT {
+                    state.recipient = Some(account.address.to_string());
+                    return;
+                }
+                let is_meta = modifiers.meta() || (modifiers.alt() && modifiers.ctrl());
+                if is_meta || kind == "regular" {
+                    state.selected.clear();
+                }
+                let mut selected_account = use_context::<GlobalState>().account;
+                *selected_account.write() = if is_meta && kind == "selected" {
+                    None
+                } else {
+                    Some(account.clone())
+                };
+            },
+            "{address}"
         }
     }
 }
@@ -714,13 +686,15 @@ fn LotItem(token: MaybeToken, lot: Lot, price: f64) -> Element {
     rsx! {
         tr {
             class: kind,
-            onclick: move |event| { selection(lot.lot_number, &event); },
-            td { class: "lot_number", "{lot_number}" },
-            td { class: "lot_date", "{lot_date}" },
-            td { class: "lot_amount", "{lot_amount}" },
-            td { "{lot_price}" },
-            td { class: "lot_term", "{term}" },
-            td { "{gain}" },
+            onclick: move |event| {
+                selection(lot.lot_number, &event);
+            },
+            td { class: "lot_number", "{lot_number}" }
+            td { class: "lot_date", "{lot_date}" }
+            td { class: "lot_amount", "{lot_amount}" }
+            td { "{lot_price}" }
+            td { class: "lot_term", "{term}" }
+            td { "{gain}" }
         }
     }
 }
@@ -730,18 +704,19 @@ fn Tokens() -> Element {
     let prices = use_context::<GlobalState>().prices.read().clone();
     rsx! {
         div { id: "tokens",
-              table {
-                  for (token, price) in prices.into_iter() {
-                      tr { class: "token",
-                           onclick: move |_| {
-                               let mut state = use_context::<GlobalState>().state;
-                               state.write().recipient = Some(token.to_string());
-                           },
-                          td { class: "token", "{token}" },
-                          td { class: "token", "${price}" },
-                      }
-                  }
-              }
+            table {
+                for (token , price) in prices.into_iter() {
+                    tr {
+                        class: "token",
+                        onclick: move |_| {
+                            let mut state = use_context::<GlobalState>().state;
+                            state.write().recipient = Some(token.to_string());
+                        },
+                        td { class: "token", "{token}" }
+                        td { class: "token", "${price}" }
+                    }
+                }
+            }
         }
     }
 }
@@ -754,39 +729,35 @@ pub fn Input() -> Element {
     let amount = state.read().amount.clone().unwrap_or_default();
     rsx! {
         div { id: "authority",
-              label {r#for: "authority", "authority:"}
-              input {
-                  id: "authority",
-                  name: "authority",
-                  value: authority,
-                  oninput: move |event| state.write().authority = Some(event.value())
-              }
-              label {r#for: "recipient", "recipient:"}
-              input {
-                  id: "recipient",
-                  name: "recipient",
-                  value: recipient,
-                  oninput: move |event| {
-                      let value = event.value();
-                      state.write().recipient = if value.is_empty() {
-                          None
-                      } else {
-                          Some(value)
-                      }
-                  }
-              }
-              label {r#for: "amount", "amount:"}
-              input {
-                  id: "amount",
-                  name: "amount",
-                  value: amount,
-                  oninput: move |event| {
-                      let value = event.value();
-                      if !value.ends_with(".") && !(value.contains(".") && value.ends_with("0")) {
-                          state.write().amount = value.parse::<f64>().ok();
-                      }
-                  }
-              }
+            label { r#for: "authority", "authority:" }
+            input {
+                id: "authority",
+                name: "authority",
+                value: authority,
+                oninput: move |event| state.write().authority = Some(event.value()),
+            }
+            label { r#for: "recipient", "recipient:" }
+            input {
+                id: "recipient",
+                name: "recipient",
+                value: recipient,
+                oninput: move |event| {
+                    let value = event.value();
+                    state.write().recipient = if value.is_empty() { None } else { Some(value) };
+                },
+            }
+            label { r#for: "amount", "amount:" }
+            input {
+                id: "amount",
+                name: "amount",
+                value: amount,
+                oninput: move |event| {
+                    let value = event.value();
+                    if !value.ends_with(".") && !(value.contains(".") && value.ends_with("0")) {
+                        state.write().amount = value.parse::<f64>().ok();
+                    }
+                },
+            }
         }
     }
 }
@@ -888,9 +859,7 @@ pub fn Summary() -> Element {
         }
     }
     rsx! {
-        div { id: "summary",
-              "{summary}"
-        }
+        div { id: "summary", "{summary}" }
     }
 }
 
@@ -901,9 +870,7 @@ pub fn Log() -> Element {
     if let Some(content) = log {
         rsx! {
             div { id: "log",
-                  pre {
-                      "{content}"
-                  }
+                pre { "{content}" }
             }
         }
     } else {
@@ -923,21 +890,19 @@ pub fn Disposed() -> Element {
             table {
                 thead {
                     tr {
-                        th { "Lot" },
-                        th { "Sale Date" },
-                        th { "Acq Date" },
-                        th { "Amount" },
-                        th { "Sale Price" },
-                        th { "Acq Price" },
-                        th { "Cap Gain" },
-                        th { "Term" },
+                        th { "Lot" }
+                        th { "Sale Date" }
+                        th { "Acq Date" }
+                        th { "Amount" }
+                        th { "Sale Price" }
+                        th { "Acq Price" }
+                        th { "Cap Gain" }
+                        th { "Term" }
                     }
                 }
                 tbody {
                     for lot in disposed_lots {
-                        DisposedLotItem {
-                            lot: lot.clone()
-                        }
+                        DisposedLotItem { lot: lot.clone() }
                     }
                 }
             }
@@ -973,14 +938,14 @@ fn DisposedLotItem(lot: DisposedLot) -> Element {
 
     rsx! {
         tr {
-            td { class: "lot_number", "{lot_number}" },
-            td { class: "lot_date", "{sale_date}" },
-            td { class: "lot_date", "{acq_date}" },
-            td { class: "lot_amount", "{amount}" },
-            td { "{sale_price}" },
-            td { "{acq_price}" },
-            td { "{gain}" },
-            td { class: "lot_term", "{term}" },
+            td { class: "lot_number", "{lot_number}" }
+            td { class: "lot_date", "{sale_date}" }
+            td { class: "lot_date", "{acq_date}" }
+            td { class: "lot_amount", "{amount}" }
+            td { "{sale_price}" }
+            td { "{acq_price}" }
+            td { "{gain}" }
+            td { class: "lot_term", "{term}" }
         }
     }
 }
