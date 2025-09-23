@@ -30,6 +30,59 @@ use {
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
+lazy_static::lazy_static! {
+    static ref CONFIG: Config = {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let home = std::path::PathBuf::from(home);
+        let conf = home.join(".config").join("sys-ui").join("config.yml");
+        let conf_clone = conf.clone();
+        let file = std::fs::File::open(conf).unwrap_or_else(|e| {
+            eprintln!(
+                "Failed to open config file {}: {:?}",
+                conf_clone.display(),
+                e
+            );
+            std::process::exit(1);
+        });
+        serde_yaml::from_reader(file).unwrap_or_else(|e| {
+            eprintln!(
+                "Failed to read config from file {}: {:?}",
+                conf_clone.display(),
+                e
+            );
+            std::process::exit(1);
+        })
+    };
+
+    static ref DB: std::sync::Arc<std::sync::RwLock<Db>> = {
+        let db_path = std::path::PathBuf::from(CONFIG.db_path.clone());
+        let mut db_fd_lock = fd_lock::RwLock::new(std::fs::File::open(&db_path).unwrap());
+        let _db_write_lock = loop {
+            match db_fd_lock.try_write() {
+                Ok(lock) => break lock,
+                Err(err) => {
+                    eprintln!(
+                        "Unable to lock database directory: {}: {}",
+                        db_path.display(),
+                        err
+                    );
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+            }
+        };
+        let db = db::new(&db_path).unwrap_or_else(|err| {
+            eprintln!("Failed to open {}: {}", db_path.display(), err);
+            std::process::exit(1)
+        });
+        std::sync::Arc::new(std::sync::RwLock::new(db))
+    };
+
+    static ref RPC: std::sync::Arc<std::sync::RwLock<RpcClients>> =
+        std::sync::Arc::new(
+            std::sync::RwLock::new(
+                RpcClients::new(CONFIG.json_rpc_url.clone(), None, None)));
+
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Config {
@@ -65,8 +118,6 @@ impl PartialEq for State {
 
 #[derive(Clone, Copy)]
 struct GlobalState {
-    db: Signal<std::rc::Rc<Db>>,
-    rpc: Signal<std::rc::Rc<RpcClients>>,
     state: Signal<State>,
     prices: Signal<BTreeMap<String, f64>>,
     account: Signal<Option<TrackedAccount>>,
@@ -94,46 +145,7 @@ fn main() {
 
 #[component]
 fn App() -> Element {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let home = std::path::PathBuf::from(home);
-    let conf = home.join(".config").join("sys-ui").join("config.yml");
-    let conf_clone = conf.clone();
-    let file = std::fs::File::open(conf).unwrap_or_else(|e| {
-        eprintln!(
-            "Failed to open config file {}: {:?}",
-            conf_clone.display(),
-            e
-        );
-        std::process::exit(1);
-    });
-    let config: Config = serde_yaml::from_reader(file).unwrap_or_else(|e| {
-        eprintln!(
-            "Failed to read config from file {}: {:?}",
-            conf_clone.display(),
-            e
-        );
-        std::process::exit(1);
-    });
-    let db_path = std::path::PathBuf::from(config.db_path);
-    let mut db_fd_lock = fd_lock::RwLock::new(std::fs::File::open(&db_path).unwrap());
-    let _db_write_lock = loop {
-        match db_fd_lock.try_write() {
-            Ok(lock) => break lock,
-            Err(err) => {
-                eprintln!(
-                    "Unable to lock database directory: {}: {}",
-                    db_path.display(),
-                    err
-                );
-                std::thread::sleep(std::time::Duration::from_secs(1));
-            }
-        }
-    };
-    let db = db::new(&db_path).unwrap_or_else(|err| {
-        eprintln!("Failed to open {}: {}", db_path.display(), err);
-        std::process::exit(1)
-    });
-    let rpc_clients = RpcClients::new(config.json_rpc_url.clone(), None, None);
+    let db = DB.read().unwrap();
     let exchanges = db.get_exchanges();
     let mut xclients = HashMap::<_, _>::new();
     for x in exchanges {
@@ -144,16 +156,14 @@ fn App() -> Element {
         }
     }
     let _global_state = use_context_provider(|| GlobalState {
-        db: Signal::new(std::rc::Rc::new(db)),
-        rpc: Signal::new(std::rc::Rc::new(rpc_clients)),
         state: Signal::new(State {
             sorted: None,
             selected: BTreeSet::default(),
             amount: None,
-            authority: Some(config.authority_keypair),
+            authority: Some(CONFIG.authority_keypair.clone()),
             recipient: None,
             log: None,
-            url: Some(config.json_rpc_url),
+            url: Some(CONFIG.json_rpc_url.clone()),
         }),
         prices: Signal::new(BTreeMap::default()),
         account: Signal::new(None),
@@ -261,8 +271,8 @@ pub fn Menu() -> Element {
                     let mut state = state.write();
                     let value = event.value();
                     state.url = Some(value.clone());
-                    let mut rpc = use_context::<GlobalState>().rpc;
-                    *rpc.write() = std::rc::Rc::new(RpcClients::new(value, None, None));
+                    let mut rpc = RPC.write().unwrap();
+                    *rpc = RpcClients::new(value, None, None);
                 },
             }
         }
@@ -282,8 +292,7 @@ pub fn Accounts() -> Element {
 
 #[component]
 pub fn AccountsList() -> Element {
-    let db = use_context::<GlobalState>().db;
-    let accounts = db.read().get_accounts();
+    let accounts = DB.read().unwrap().get_accounts();
 
     rsx! {
         div { id: "account_list",
@@ -299,12 +308,12 @@ pub fn AccountsList() -> Element {
 #[component]
 pub fn AccountState() -> Element {
     let account = use_context::<GlobalState>().account.read().clone();
-    let rpc = use_context::<GlobalState>().rpc;
+    let rpc = RPC.read().unwrap();
 
     if let Some(account) = account {
         let content = account.description.to_string();
         let mut buffer = std::io::BufWriter::new(Vec::new());
-        if get_account_state(&rpc.read(), account.token, account.address, &mut buffer).is_ok() {
+        if get_account_state(&rpc, account.token, account.address, &mut buffer).is_ok() {
             let bytes = buffer.into_inner().unwrap();
             let account_state = String::from_utf8(bytes).unwrap();
             rsx! {
@@ -330,8 +339,7 @@ pub fn AccountState() -> Element {
 
 #[component]
 pub fn Exchanges() -> Element {
-    let db = use_context::<GlobalState>().db;
-    let exchanges = db.read().get_exchanges();
+    let exchanges = DB.read().unwrap().get_exchanges();
 
     rsx! {
         div { id: "exchanges",
@@ -768,14 +776,14 @@ pub fn Summary() -> Element {
     let selected_account = use_context::<GlobalState>().account.read().clone();
     let prices = use_context::<GlobalState>().prices.read().clone();
     let state = use_context::<GlobalState>().state;
-    let db = use_context::<GlobalState>().db;
+    let db = DB.read().unwrap();
     let (long_term_gain_tax_rate, short_term_gain_tax_rate) =
-        if let Some(ref rate) = db.read().get_tax_rate() {
+        if let Some(ref rate) = db.get_tax_rate() {
             (rate.long_term_gain, rate.short_term_gain)
         } else {
             (0.22f64, 0.3935f64)
         };
-    let accounts = db.read().get_accounts();
+    let accounts = db.get_accounts();
     let mut held_tokens = BTreeMap::<MaybeToken, u64>::default();
     for account in accounts {
         if let std::collections::btree_map::Entry::Vacant(e) = held_tokens.entry(account.token) {
@@ -882,8 +890,7 @@ pub fn Log() -> Element {
 
 #[component]
 pub fn Disposed() -> Element {
-    let db = use_context::<GlobalState>().db;
-    let disposed_lots = db.read().disposed_lots();
+    let disposed_lots = DB.read().unwrap().disposed_lots();
 
     rsx! {
         div { id: "disposed",
@@ -1027,8 +1034,8 @@ async fn sync() {
     let mut state = use_context::<GlobalState>().state;
     let mut state = state.write();
     state.log = None;
-    let mut db = use_context::<GlobalState>().db;
-    let rpc = use_context::<GlobalState>().rpc;
+    let mut db = DB.write().unwrap();
+    let rpc = RPC.read().unwrap();
     let account = use_context::<GlobalState>().account.read().clone();
     let address = account.map(|x| x.address);
     let reconcile_no_sync_account_balances = false;
@@ -1037,8 +1044,8 @@ async fn sync() {
     let notifier = Notifier::default();
     let mut buffer = std::io::BufWriter::new(Vec::new());
     if let Err(e) = process_account_sync(
-        std::rc::Rc::get_mut(&mut db.write()).unwrap(),
-        &rpc.read(),
+        &mut db,
+        &rpc,
         address,
         max_epochs_to_process,
         reconcile_no_sync_account_balances,
@@ -1070,8 +1077,8 @@ async fn split() {
         state.log = Some("Enter staking authority keypair for account to be split".to_string());
         return;
     }
-    let rpc = use_context::<GlobalState>().rpc;
-    let mut db = use_context::<GlobalState>().db;
+    let rpc = RPC.read().unwrap();
+    let mut db = DB.write().unwrap();
     let account = selected_account.read().clone().unwrap();
     let from_address = account.address;
     let amount = account
@@ -1098,8 +1105,8 @@ async fn split() {
     let priority_fee = PriorityFee::default_auto();
     let mut buffer = std::io::BufWriter::new(Vec::new());
     if let Err(e) = process_account_split(
-        std::rc::Rc::get_mut(&mut db.write()).unwrap(),
-        &rpc.read(),
+        &mut db,
+        &rpc,
         from_address,
         Some(amount),
         description,
@@ -1142,7 +1149,7 @@ async fn deactivate() {
             Some("Enter staking authority keypair for account to be deactivated".to_string());
         return;
     }
-    let rpc = use_context::<GlobalState>().rpc;
+    let rpc = RPC.read().unwrap();
     let account = selected_account.read().clone().unwrap();
     let authority = state.authority.clone().unwrap();
     state.log = Some(format!(
@@ -1152,7 +1159,7 @@ async fn deactivate() {
     let (authority_signer, authority_address) = make_signer!(authority, state);
     let mut buffer = std::io::BufWriter::new(Vec::new());
     if let Err(e) = process_stake_deactivate(
-        &rpc.read(),
+        &rpc,
         account.address,
         authority_address,
         vec![authority_signer],
@@ -1190,8 +1197,8 @@ async fn withdraw() {
             Some("Enter withdraw authority keypair for account to withdraw from".to_string());
         return;
     }
-    let rpc = use_context::<GlobalState>().rpc;
-    let mut db = use_context::<GlobalState>().db;
+    let rpc = RPC.read().unwrap();
+    let mut db = DB.write().unwrap();
     let account = selected_account.read().clone().unwrap();
     let from_address = account.address;
     let amount = if state.amount.unwrap_or_default() > 0. {
@@ -1241,7 +1248,7 @@ async fn withdraw() {
         }
         *selected_account.write() = None;
         state.selected.clear();
-        if let Err(e) = std::rc::Rc::get_mut(&mut db.write()).unwrap().record_drop(
+        if let Err(e) = db.record_drop(
             account.address,
             account.token,
             amount,
@@ -1260,8 +1267,8 @@ async fn withdraw() {
     let (authority_signer, authority_address) = make_signer!(authority, state);
     let custodian = None;
     if let Err(e) = process_stake_withdraw(
-        std::rc::Rc::get_mut(&mut db.write()).unwrap(),
-        &rpc.read(),
+        &mut db,
+        &rpc,
         from_address,
         authority_address,
         to_address,
@@ -1305,7 +1312,7 @@ async fn delegate() {
         state.log = Some("Enter staking authority keypair for account to delegate".to_string());
         return;
     }
-    let rpc = use_context::<GlobalState>().rpc;
+    let rpc = RPC.read().unwrap();
     let account = selected_account.read().clone().unwrap();
     let from_address = account.address;
     let recipient = state.recipient.clone().unwrap();
@@ -1321,7 +1328,7 @@ async fn delegate() {
     let (authority_signer, authority_address) = make_signer!(authority, state);
     let mut buffer = std::io::BufWriter::new(Vec::new());
     if let Err(e) = process_stake_delegate(
-        &rpc.read(),
+        &rpc,
         from_address,
         authority_address,
         to_address,
@@ -1354,8 +1361,8 @@ async fn swap() {
         state.log = Some("Enter signer keypair for swap".to_string());
         return;
     }
-    let rpc = use_context::<GlobalState>().rpc;
-    let mut db = use_context::<GlobalState>().db;
+    let rpc = RPC.read().unwrap();
+    let mut db = DB.write().unwrap();
     let account = selected_account.read().clone().unwrap();
     let authority = state.authority.clone().unwrap();
     let (signer, address) = make_signer!(authority, state);
@@ -1390,8 +1397,8 @@ async fn swap() {
     let notifier = Notifier::default();
     let mut buffer = std::io::BufWriter::new(Vec::new());
     if let Err(e) = process_jup_swap(
-        std::rc::Rc::get_mut(&mut db.write()).unwrap(),
-        &rpc.read(),
+        &mut db,
+        &rpc,
         address,
         from_token,
         to_token,
@@ -1421,8 +1428,8 @@ async fn swap() {
         return;
     }
     if let Err(e) = process_sync_swaps(
-        std::rc::Rc::get_mut(&mut db.write()).unwrap(),
-        rpc.read().default(),
+        &mut db,
+        rpc.default(),
         &notifier,
         &mut buffer,
     )
@@ -1454,8 +1461,8 @@ async fn merge() {
         state.log = Some("Enter staking authority keypair for account to be merged".to_string());
         return;
     }
-    let rpc = use_context::<GlobalState>().rpc;
-    let mut db = use_context::<GlobalState>().db;
+    let rpc = RPC.read().unwrap();
+    let mut db = DB.write().unwrap();
     let account = selected_account.read().clone().unwrap();
     let from_address = account.address;
     let recipient = state.recipient.clone().unwrap();
@@ -1473,8 +1480,8 @@ async fn merge() {
     let signature = None;
     let mut buffer = std::io::BufWriter::new(Vec::new());
     if let Err(e) = process_account_merge(
-        std::rc::Rc::get_mut(&mut db.write()).unwrap(),
-        &rpc.read(),
+        &mut db,
+        &rpc,
         from_address,
         into_address,
         authority_address,
@@ -1908,7 +1915,7 @@ pub fn get_account_state<W: Write>(
 enum Action {}
 
 async fn update_prices(mut _rx: UnboundedReceiver<Action>) {
-    let rpc = use_context::<GlobalState>().rpc;
+    let rpc = RPC.read().unwrap();
     let mut prices = use_context::<GlobalState>().prices;
     loop {
         let mut tokens = vec![MaybeToken::from(None)];
@@ -1920,7 +1927,7 @@ async fn update_prices(mut _rx: UnboundedReceiver<Action>) {
         );
         for token in tokens {
             let price = token
-                .get_current_price(&rpc.read().default())
+                .get_current_price(&rpc.default())
                 .await
                 .map(|x| format!("{x:.6}").trim().parse::<f64>().unwrap())
                 .unwrap_or(0f64);
