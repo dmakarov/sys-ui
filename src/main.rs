@@ -216,7 +216,11 @@ pub fn Menu() -> Element {
         div { id: "menu",
             button {
                 onclick: move |_| {
-                    spawn(async move { sync().await });
+                    // value doesn't matter, just need to rewrite it
+                    *(use_context::<GlobalState>().xupdate.write()) = true;
+                    let account = use_context::<GlobalState>().account.read().clone();
+                    let address = account.map(|x| x.address);
+                    spawn(async move { sync(address).await });
                 },
                 "Sync"
             }
@@ -692,11 +696,42 @@ fn LotItem(token: MaybeToken, lot: Lot, price: f64) -> Element {
         "regular"
     };
     let account = use_context::<GlobalState>().account.read().clone();
+    let mut state = use_context::<GlobalState>().state;
     rsx! {
         tr {
             class: kind,
             onclick: move |event| {
-                selection(lot.lot_number, &event, &account);
+                let lot = lot.lot_number;
+                let mut state = state.write();
+                let modifiers = event.data().modifiers();
+                if modifiers.shift() {
+                    if let Some(ref account) = account {
+                        let mut sel_end = 0;
+                        let mut sel_beg = 0;
+                        for (i, l) in account.lots.iter().enumerate() {
+                            if l.lot_number == lot {
+                                sel_end = i;
+                            } else if state.selected.contains(&l.lot_number) {
+                                sel_beg = i;
+                            }
+                        }
+                        if sel_beg > sel_end {
+                            std::mem::swap(&mut sel_beg, &mut sel_end);
+                        }
+                        for i in sel_beg..=sel_end {
+                            state.selected.insert(account.lots[i].lot_number);
+                        }
+                    }
+                } else if modifiers.meta() {
+                    if state.selected.contains(&lot) {
+                        state.selected.remove(&lot);
+                    } else {
+                        state.selected.insert(lot);
+                    }
+                } else {
+                    state.selected.clear();
+                    state.selected.insert(lot);
+                }
             },
             td { class: "lot_number", "{lot_number}" }
             td { class: "lot_date", "{lot_date}" }
@@ -966,40 +1001,6 @@ fn PageNotFound(route: Vec<String>) -> Element {
     }
 }
 
-fn selection(lot: usize, event: &Event<MouseData>, account: &Option<TrackedAccount>) {
-    let mut state = use_context::<GlobalState>().state;
-    let mut state = state.write();
-    let modifiers = event.data().modifiers();
-    if modifiers.shift() {
-        if let Some(account) = account {
-            let mut sel_end = 0;
-            let mut sel_beg = 0;
-            for (i, l) in account.lots.iter().enumerate() {
-                if l.lot_number == lot {
-                    sel_end = i;
-                } else if state.selected.contains(&l.lot_number) {
-                    sel_beg = i;
-                }
-            }
-            if sel_beg > sel_end {
-                std::mem::swap(&mut sel_beg, &mut sel_end);
-            }
-            for i in sel_beg..=sel_end {
-                state.selected.insert(account.lots[i].lot_number);
-            }
-        }
-    } else if modifiers.meta() {
-        if state.selected.contains(&lot) {
-            state.selected.remove(&lot);
-        } else {
-            state.selected.insert(lot);
-        }
-    } else {
-        state.selected.clear();
-        state.selected.insert(lot);
-    }
-}
-
 macro_rules! make_arg_matches {
     {$name:expr, $value:ident, $func:ident} => {
         clap::App::new("sys")
@@ -1030,26 +1031,21 @@ macro_rules! make_signer {
     }
 }
 
-async fn sync() {
+async fn sync(address: Option<Pubkey>) {
     let mut state = use_context::<GlobalState>().state;
     let mut state = state.write();
     state.log = None;
     let mut db = DB.write().unwrap();
     let rpc = RPC.read().unwrap();
-    let account = use_context::<GlobalState>().account.read().clone();
-    let address = account.map(|x| x.address);
-    let reconcile_no_sync_account_balances = false;
-    let force_rescan_balances = false;
-    let max_epochs_to_process = None;
     let notifier = Notifier::default();
     let mut buffer = std::io::BufWriter::new(Vec::new());
     if let Err(e) = process_account_sync(
         &mut db,
         &rpc,
         address,
-        max_epochs_to_process,
-        reconcile_no_sync_account_balances,
-        force_rescan_balances,
+        None,
+        false,
+        false,
         &notifier,
         &mut buffer,
     )
@@ -1060,8 +1056,6 @@ async fn sync() {
     }
     let bytes = buffer.into_inner().unwrap();
     state.log = Some(String::from_utf8(bytes).unwrap());
-    let mut xupdate = use_context::<GlobalState>().xupdate;
-    *xupdate.write() = true; // value doesn't matter, just need to rewrite it
 }
 
 async fn split() {
