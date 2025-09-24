@@ -139,6 +139,8 @@ enum Route {
     PageNotFound { route: Vec<String> },
 }
 
+enum Action {}
+
 fn main() {
     dioxus::launch(App);
 }
@@ -220,49 +222,57 @@ pub fn Menu() -> Element {
                     *(use_context::<GlobalState>().xupdate.write()) = true;
                     let account = use_context::<GlobalState>().account.read().clone();
                     let address = account.map(|x| x.address);
-                    spawn(async move { sync(address).await });
+                    let mut state = use_context::<GlobalState>().state;
+                    spawn(async move { sync(address, &mut state).await });
                 },
                 "Sync"
             }
             button {
                 onclick: move |_| {
-                    spawn(async move { split().await });
+                    let mut state = use_context::<GlobalState>().state;
+                    spawn(async move { split(&mut state).await });
                 },
                 "Split"
             }
             button {
                 onclick: move |_| {
-                    spawn(async move { deactivate().await });
+                    let mut state = use_context::<GlobalState>().state;
+                    spawn(async move { deactivate(&mut state).await });
                 },
                 "Deactivate"
             }
             button {
                 onclick: move |_| {
-                    spawn(async move { withdraw().await });
+                    let mut state = use_context::<GlobalState>().state;
+                    spawn(async move { withdraw(&mut state).await });
                 },
                 "Withdraw"
             }
             button {
                 onclick: move |_| {
-                    spawn(async move { delegate().await });
+                    let mut state = use_context::<GlobalState>().state;
+                    spawn(async move { delegate(&mut state).await });
                 },
                 "Delegate"
             }
             button {
                 onclick: move |_| {
-                    spawn(async move { swap().await });
+                    let mut state = use_context::<GlobalState>().state;
+                    spawn(async move { swap(&mut state).await });
                 },
                 "Swap"
             }
             button {
                 onclick: move |_| {
-                    spawn(async move { merge().await });
+                    let mut state = use_context::<GlobalState>().state;
+                    spawn(async move { merge(&mut state).await });
                 },
                 "Merge"
             }
             button {
                 onclick: move |_| {
-                    spawn(async move { disburse().await });
+                    let mut state = use_context::<GlobalState>().state;
+                    spawn(async move { disburse(&mut state).await });
                 },
                 "Disburse"
             }
@@ -1031,8 +1041,7 @@ macro_rules! make_signer {
     }
 }
 
-async fn sync(address: Option<Pubkey>) {
-    let mut state = use_context::<GlobalState>().state;
+async fn sync(address: Option<Pubkey>, state: &mut Signal<State>) {
     let mut state = state.write();
     state.log = None;
     let mut db = DB.write().unwrap();
@@ -1058,8 +1067,7 @@ async fn sync(address: Option<Pubkey>) {
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn split() {
-    let mut state = use_context::<GlobalState>().state;
+async fn split(state: &mut Signal<State>) {
     let mut state = state.write();
     state.log = None;
     let mut selected_account = use_context::<GlobalState>().account;
@@ -1129,8 +1137,7 @@ async fn split() {
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn deactivate() {
-    let mut state = use_context::<GlobalState>().state;
+async fn deactivate(state: &mut Signal<State>) {
     let mut state = state.write();
     state.log = None;
     let selected_account = use_context::<GlobalState>().account;
@@ -1172,8 +1179,7 @@ async fn deactivate() {
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn withdraw() {
-    let mut state = use_context::<GlobalState>().state;
+async fn withdraw(state: &mut Signal<State>) {
     let mut state = state.write();
     state.log = None;
     let mut selected_account = use_context::<GlobalState>().account;
@@ -1289,8 +1295,7 @@ async fn withdraw() {
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn delegate() {
-    let mut state = use_context::<GlobalState>().state;
+async fn delegate(state: &mut Signal<State>) {
     let mut state = state.write();
     state.log = None;
     let selected_account = use_context::<GlobalState>().account;
@@ -1342,8 +1347,7 @@ async fn delegate() {
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn swap() {
-    let mut state = use_context::<GlobalState>().state;
+async fn swap(state: &mut Signal<State>) {
     let mut state = state.write();
     state.log = None;
     let mut selected_account = use_context::<GlobalState>().account;
@@ -1438,8 +1442,7 @@ async fn swap() {
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn merge() {
-    let mut state = use_context::<GlobalState>().state;
+async fn merge(state: &mut Signal<State>) {
     let mut state = state.write();
     state.log = None;
     let mut selected_account = use_context::<GlobalState>().account;
@@ -1497,8 +1500,7 @@ async fn merge() {
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn disburse() {
-    let mut state = use_context::<GlobalState>().state;
+async fn disburse(state: &mut Signal<State>) {
     let mut state = state.write();
     let xclients = use_context::<GlobalState>().xclients;
     let xclients = xclients.read();
@@ -1906,20 +1908,18 @@ pub fn get_account_state<W: Write>(
     Ok(())
 }
 
-enum Action {}
-
 async fn update_prices(mut _rx: UnboundedReceiver<Action>) {
-    let rpc = RPC.read().unwrap();
     let mut prices = use_context::<GlobalState>().prices;
+    let mut tokens = vec![MaybeToken::from(None)];
+    tokens.append(
+        &mut Token::VARIANTS
+            .into_iter()
+            .map(|x| MaybeToken::from(Some(x)))
+            .collect::<Vec<MaybeToken>>(),
+    );
     loop {
-        let mut tokens = vec![MaybeToken::from(None)];
-        tokens.append(
-            &mut Token::VARIANTS
-                .into_iter()
-                .map(|x| MaybeToken::from(Some(x)))
-                .collect::<Vec<MaybeToken>>(),
-        );
-        for token in tokens {
+        let rpc = RPC.read().unwrap();
+        for token in tokens.iter() {
             let price = token
                 .get_current_price(&rpc.default())
                 .await
@@ -1927,6 +1927,7 @@ async fn update_prices(mut _rx: UnboundedReceiver<Action>) {
                 .unwrap_or(0f64);
             prices.write().insert(token.to_string(), price);
         }
+        drop(rpc);
         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
     }
 }
