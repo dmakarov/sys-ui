@@ -229,50 +229,63 @@ pub fn Menu() -> Element {
             }
             button {
                 onclick: move |_| {
+                    let mut account = use_context::<GlobalState>().account;
                     let mut state = use_context::<GlobalState>().state;
-                    spawn(async move { split(&mut state).await });
+                    spawn(async move { split(&mut account, &mut state).await });
                 },
                 "Split"
             }
             button {
                 onclick: move |_| {
+                    let mut account = use_context::<GlobalState>().account;
                     let mut state = use_context::<GlobalState>().state;
-                    spawn(async move { deactivate(&mut state).await });
+                    spawn(async move { deactivate(&mut account, &mut state).await });
                 },
                 "Deactivate"
             }
             button {
                 onclick: move |_| {
+                    let mut account = use_context::<GlobalState>().account;
                     let mut state = use_context::<GlobalState>().state;
-                    spawn(async move { withdraw(&mut state).await });
+                    let mut xupdate = use_context::<GlobalState>().xupdate;
+                    spawn(async move { withdraw(&mut account, &mut state, &mut xupdate).await });
                 },
                 "Withdraw"
             }
             button {
                 onclick: move |_| {
+                    let mut account = use_context::<GlobalState>().account;
                     let mut state = use_context::<GlobalState>().state;
-                    spawn(async move { delegate(&mut state).await });
+                    spawn(async move { delegate(&mut account, &mut state).await });
                 },
                 "Delegate"
             }
             button {
                 onclick: move |_| {
+                    let mut account = use_context::<GlobalState>().account;
                     let mut state = use_context::<GlobalState>().state;
-                    spawn(async move { swap(&mut state).await });
+                    spawn(async move { swap(&mut account, &mut state).await });
                 },
                 "Swap"
             }
             button {
                 onclick: move |_| {
+                    let mut account = use_context::<GlobalState>().account;
                     let mut state = use_context::<GlobalState>().state;
-                    spawn(async move { merge(&mut state).await });
+                    spawn(async move { merge(&mut account, &mut state).await });
                 },
                 "Merge"
             }
             button {
                 onclick: move |_| {
+                    let xaccount = use_context::<GlobalState>().xaccount.read().clone();
+                    let xpmethod = use_context::<GlobalState>().xpmethod.read().clone();
+                    let xclients = use_context::<GlobalState>().xclients;
                     let mut state = use_context::<GlobalState>().state;
-                    spawn(async move { disburse(&mut state).await });
+                    spawn(async move {
+                        disburse(xaccount, xpmethod, &xclients, &mut state).await;
+                        *(use_context::<GlobalState>().xupdate.write()) = true;
+                    });
                 },
                 "Disburse"
             }
@@ -1067,10 +1080,9 @@ async fn sync(address: Option<Pubkey>, state: &mut Signal<State>) {
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn split(state: &mut Signal<State>) {
+async fn split(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
     let mut state = state.write();
     state.log = None;
-    let mut selected_account = use_context::<GlobalState>().account;
     if state.selected.is_empty() || selected_account.read().is_none() {
         state.log = Some("Select account and lots to split".to_string());
         return;
@@ -1137,10 +1149,9 @@ async fn split(state: &mut Signal<State>) {
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn deactivate(state: &mut Signal<State>) {
+async fn deactivate(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
     let mut state = state.write();
     state.log = None;
-    let selected_account = use_context::<GlobalState>().account;
     if selected_account.read().is_none() {
         state.log = Some("Select account to deactivate".to_string());
         return;
@@ -1173,17 +1184,18 @@ async fn deactivate(state: &mut Signal<State>) {
             authority, account.address, e,
         ));
     }
-    let mut selected_account = use_context::<GlobalState>().account;
     *selected_account.write() = None;
     let bytes = buffer.into_inner().unwrap();
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn withdraw(state: &mut Signal<State>) {
+async fn withdraw(
+    selected_account: &mut Signal<Option<TrackedAccount>>,
+    state: &mut Signal<State>,
+    xupdate: &mut Signal<bool>,
+) {
     let mut state = state.write();
     state.log = None;
-    let mut selected_account = use_context::<GlobalState>().account;
-    let mut xupdate = use_context::<GlobalState>().xupdate;
     if state.selected.is_empty() || selected_account.read().is_none() {
         state.log = Some("Select account and lots to withdraw".to_string());
         return;
@@ -1295,10 +1307,9 @@ async fn withdraw(state: &mut Signal<State>) {
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn delegate(state: &mut Signal<State>) {
+async fn delegate(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
     let mut state = state.write();
     state.log = None;
-    let selected_account = use_context::<GlobalState>().account;
     if selected_account.read().is_none() {
         state.log = Some("Select account to delegate".to_string());
         return;
@@ -1341,16 +1352,14 @@ async fn delegate(state: &mut Signal<State>) {
             authority, from_address, to_address, e,
         ));
     }
-    let mut selected_account = use_context::<GlobalState>().account;
     *selected_account.write() = None;
     let bytes = buffer.into_inner().unwrap();
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn swap(state: &mut Signal<State>) {
+async fn swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
     let mut state = state.write();
     state.log = None;
-    let mut selected_account = use_context::<GlobalState>().account;
     if state.selected.is_empty() || selected_account.read().is_none() {
         state.log = Some("Select account and lots to swap".to_string());
         return;
@@ -1442,10 +1451,9 @@ async fn swap(state: &mut Signal<State>) {
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn merge(state: &mut Signal<State>) {
+async fn merge(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
     let mut state = state.write();
     state.log = None;
-    let mut selected_account = use_context::<GlobalState>().account;
     if selected_account.read().is_none() {
         state.log = Some("Select account to merge".to_string());
         return;
@@ -1500,16 +1508,18 @@ async fn merge(state: &mut Signal<State>) {
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn disburse(state: &mut Signal<State>) {
+async fn disburse(
+    xaccount: Option<(Exchange, String)>,
+    xpmethod: Option<(Exchange, String)>,
+    xclients: &Signal<Option<HashMap<Exchange, Box<dyn ExchangeClient>>>>,
+    state: &mut Signal<State>,
+) {
     let mut state = state.write();
-    let xclients = use_context::<GlobalState>().xclients;
     let xclients = xclients.read();
-    let xaccount = use_context::<GlobalState>().xaccount.read().clone();
     if xaccount.is_none() {
         state.log = Some("Select exchange account from which to disburse cash".to_string());
         return;
     }
-    let xpmethod = use_context::<GlobalState>().xpmethod.read().clone();
     if xpmethod.is_none() {
         state.log = Some("Select bank account to which to disburse cash".to_string());
         return;
@@ -1555,8 +1565,6 @@ async fn disburse(state: &mut Signal<State>) {
         }
         Err(e) => state.log = Some(format!("{e}")),
     }
-    let mut xupdate = use_context::<GlobalState>().xupdate;
-    *xupdate.write() = true; // value doesn't matter, just need to rewrite it
 }
 
 pub async fn process_stake_deactivate<T: Signers, W: Write>(
