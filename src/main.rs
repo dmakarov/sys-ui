@@ -175,7 +175,29 @@ fn App() -> Element {
         xupdate: Signal::new(false),
     });
 
-    use_coroutine(update_prices);
+    let mut prices = use_context::<GlobalState>().prices;
+    use_coroutine(move |_rx: UnboundedReceiver<Action>| async move {
+        let mut tokens = vec![MaybeToken::from(None)];
+        tokens.append(
+            &mut Token::VARIANTS
+                .into_iter()
+                .map(|x| MaybeToken::from(Some(x)))
+                .collect::<Vec<MaybeToken>>(),
+        );
+        loop {
+            let rpc = RPC.read().unwrap();
+            for token in tokens.iter() {
+                let price = token
+                    .get_current_price(&rpc.default())
+                    .await
+                    .map(|x| format!("{x:.6}").trim().parse::<f64>().unwrap())
+                    .unwrap_or(0f64);
+                prices.write().insert(token.to_string(), price);
+            }
+            drop(rpc);
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        }
+    });
 
     rsx! {
         document::Link { rel: "icon", href: FAVICON }
@@ -218,7 +240,6 @@ pub fn Menu() -> Element {
         div { id: "menu",
             button {
                 onclick: move |_| {
-                    // value doesn't matter, just need to rewrite it
                     *(use_context::<GlobalState>().xupdate.write()) = true;
                     let account = use_context::<GlobalState>().account.read().clone();
                     let address = account.map(|x| x.address);
@@ -1914,28 +1935,4 @@ pub fn get_account_state<W: Write>(
         writeln!(writer, "improbable account")?;
     }
     Ok(())
-}
-
-async fn update_prices(mut _rx: UnboundedReceiver<Action>) {
-    let mut prices = use_context::<GlobalState>().prices;
-    let mut tokens = vec![MaybeToken::from(None)];
-    tokens.append(
-        &mut Token::VARIANTS
-            .into_iter()
-            .map(|x| MaybeToken::from(Some(x)))
-            .collect::<Vec<MaybeToken>>(),
-    );
-    loop {
-        let rpc = RPC.read().unwrap();
-        for token in tokens.iter() {
-            let price = token
-                .get_current_price(&rpc.default())
-                .await
-                .map(|x| format!("{x:.6}").trim().parse::<f64>().unwrap())
-                .unwrap_or(0f64);
-            prices.write().insert(token.to_string(), price);
-        }
-        drop(rpc);
-        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-    }
 }
