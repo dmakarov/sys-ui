@@ -1190,7 +1190,10 @@ async fn split(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mu
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn deactivate(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
+async fn deactivate(
+    selected_account: &mut Signal<Option<TrackedAccount>>,
+    state: &mut Signal<State>,
+) {
     let mut state = state.write();
     state.log = None;
     if selected_account.read().is_none() {
@@ -1345,7 +1348,10 @@ async fn withdraw(
     state.log = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn delegate(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
+async fn delegate(
+    selected_account: &mut Signal<Option<TrackedAccount>>,
+    state: &mut Signal<State>,
+) {
     let mut state = state.write();
     state.log = None;
     if selected_account.read().is_none() {
@@ -1472,14 +1478,7 @@ async fn swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut
         ));
         return;
     }
-    if let Err(e) = process_sync_swaps(
-        &mut db,
-        rpc.default(),
-        &notifier,
-        &mut buffer,
-    )
-    .await
-    {
+    if let Err(e) = process_sync_swaps(&mut db, rpc.default(), &notifier, &mut buffer).await {
         state.log = Some(format!("Failed sys sync: {:?}", e,));
         return;
     }
