@@ -125,6 +125,7 @@ struct GlobalState {
     xpmethod: Signal<Option<(Exchange, String)>>,
     xclients: Signal<Option<HashMap<Exchange, Box<dyn ExchangeClient>>>>,
     xupdate: Signal<bool>,
+    reload: Signal<bool>,
 }
 
 #[derive(Routable, Clone)]
@@ -173,6 +174,7 @@ fn App() -> Element {
         xpmethod: Signal::new(None),
         xclients: Signal::new(Some(xclients)),
         xupdate: Signal::new(false),
+        reload: Signal::new(false),
     });
 
     let mut prices = use_context::<GlobalState>().prices;
@@ -240,11 +242,14 @@ pub fn Menu() -> Element {
         div { id: "menu",
             button {
                 onclick: move |_| {
-                    *(use_context::<GlobalState>().xupdate.write()) = true;
                     let account = use_context::<GlobalState>().account.read().clone();
                     let address = account.map(|x| x.address);
                     let mut state = use_context::<GlobalState>().state;
-                    spawn(async move { sync(address, &mut state).await });
+                    spawn(async move {
+                        sync(address, &mut state).await;
+                        *(use_context::<GlobalState>().reload.write()) = true;
+                        *(use_context::<GlobalState>().xupdate.write()) = true;
+                    });
                 },
                 "Sync"
             }
@@ -252,7 +257,10 @@ pub fn Menu() -> Element {
                 onclick: move |_| {
                     let mut account = use_context::<GlobalState>().account;
                     let mut state = use_context::<GlobalState>().state;
-                    spawn(async move { split(&mut account, &mut state).await });
+                    spawn(async move {
+                        split(&mut account, &mut state).await;
+                        *(use_context::<GlobalState>().reload.write()) = true;
+                    });
                 },
                 "Split"
             }
@@ -268,8 +276,11 @@ pub fn Menu() -> Element {
                 onclick: move |_| {
                     let mut account = use_context::<GlobalState>().account;
                     let mut state = use_context::<GlobalState>().state;
-                    let mut xupdate = use_context::<GlobalState>().xupdate;
-                    spawn(async move { withdraw(&mut account, &mut state, &mut xupdate).await });
+                    spawn(async move {
+                        withdraw(&mut account, &mut state).await;
+                        *(use_context::<GlobalState>().reload.write()) = true;
+                        *(use_context::<GlobalState>().xupdate.write()) = true;
+                    });
                 },
                 "Withdraw"
             }
@@ -285,7 +296,10 @@ pub fn Menu() -> Element {
                 onclick: move |_| {
                     let mut account = use_context::<GlobalState>().account;
                     let mut state = use_context::<GlobalState>().state;
-                    spawn(async move { swap(&mut account, &mut state).await });
+                    spawn(async move {
+                        swap(&mut account, &mut state).await;
+                        *(use_context::<GlobalState>().reload.write()) = true;
+                    });
                 },
                 "Swap"
             }
@@ -293,7 +307,10 @@ pub fn Menu() -> Element {
                 onclick: move |_| {
                     let mut account = use_context::<GlobalState>().account;
                     let mut state = use_context::<GlobalState>().state;
-                    spawn(async move { merge(&mut account, &mut state).await });
+                    spawn(async move {
+                        merge(&mut account, &mut state).await;
+                        *(use_context::<GlobalState>().reload.write()) = true;
+                    });
                 },
                 "Merge"
             }
@@ -340,6 +357,9 @@ pub fn Accounts() -> Element {
 
 #[component]
 pub fn AccountsList() -> Element {
+    if *(use_context::<GlobalState>().reload.read()) {
+        println!("Reloading accounts");
+    }
     let accounts = DB.read().unwrap().get_accounts();
 
     rsx! {
@@ -1213,7 +1233,6 @@ async fn deactivate(selected_account: &mut Signal<Option<TrackedAccount>>, state
 async fn withdraw(
     selected_account: &mut Signal<Option<TrackedAccount>>,
     state: &mut Signal<State>,
-    xupdate: &mut Signal<bool>,
 ) {
     let mut state = state.write();
     state.log = None;
@@ -1292,8 +1311,6 @@ async fn withdraw(
         }
         let bytes = buffer.into_inner().unwrap();
         state.log = Some(String::from_utf8(bytes).unwrap());
-        // Force fetching account data from exchange
-        *xupdate.write() = true; // value doesn't matter, just need to rewrite it
         return;
     }
     let authority = state.authority.clone().unwrap();
