@@ -238,11 +238,9 @@ pub fn Main() -> Element {
 
 #[component]
 pub fn Menu() -> Element {
-    let mut state = use_context::<GlobalState>().state;
-    let url = state.read().url.clone().unwrap_or_default();
+    let account = use_context::<GlobalState>().account.read().clone();
+    let address = account.map(|x| x.address);
     let sync = move |_| {
-        let account = use_context::<GlobalState>().account.read().clone();
-        let address = account.map(|x| x.address);
         spawn(async move {
             let mut buffer = std::io::BufWriter::new(Vec::new());
             match process_account_sync(
@@ -272,22 +270,18 @@ pub fn Menu() -> Element {
             consume_context::<GlobalState>().xupdate.set(true);
         });
     };
+    let mut account = use_context::<GlobalState>().account;
+    let mut state = use_context::<GlobalState>().state;
     let split = move |_| {
-        let mut account = use_context::<GlobalState>().account;
-        let mut state = use_context::<GlobalState>().state;
         spawn(async move {
             do_split(&mut account, &mut state).await;
             *(use_context::<GlobalState>().reload.write()) = true;
         });
     };
     let deactivate = move |_| {
-        let mut account = use_context::<GlobalState>().account;
-        let state = use_context::<GlobalState>().state;
         spawn(async move { do_deactivate(&mut account, &state).await });
     };
     let withdraw = move |_| {
-        let mut account = use_context::<GlobalState>().account;
-        let mut state = use_context::<GlobalState>().state;
         spawn(async move {
             do_withdraw(&mut account, &mut state).await;
             *(use_context::<GlobalState>().reload.write()) = true;
@@ -295,36 +289,30 @@ pub fn Menu() -> Element {
         });
     };
     let delegate = move |_| {
-        let mut account = use_context::<GlobalState>().account;
-        let state = use_context::<GlobalState>().state;
         spawn(async move { do_delegate(&mut account, &state).await });
     };
     let swap = move |_| {
-        let mut account = use_context::<GlobalState>().account;
-        let mut state = use_context::<GlobalState>().state;
         spawn(async move {
             do_swap(&mut account, &mut state).await;
             *(use_context::<GlobalState>().reload.write()) = true;
         });
     };
     let merge = move |_| {
-        let mut account = use_context::<GlobalState>().account;
-        let state = use_context::<GlobalState>().state;
         spawn(async move {
             do_merge(&mut account, &state).await;
             *(use_context::<GlobalState>().reload.write()) = true;
         });
     };
+    let xclients = use_context::<GlobalState>().xclients;
     let disburse = move |_| {
         let xaccount = use_context::<GlobalState>().xaccount.read().clone();
         let xpmethod = use_context::<GlobalState>().xpmethod.read().clone();
-        let xclients = use_context::<GlobalState>().xclients;
-        let state = use_context::<GlobalState>().state;
         spawn(async move {
             do_disburse(xaccount, xpmethod, &xclients, &state).await;
             *(use_context::<GlobalState>().xupdate.write()) = true;
         });
     };
+    let url = state.read().url.clone().unwrap_or_default();
     rsx! {
         div { id: "menu",
             button { onclick: sync, "Sync" }
