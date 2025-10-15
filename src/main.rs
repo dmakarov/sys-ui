@@ -106,7 +106,6 @@ struct State {
     pub amount: Option<f64>,
     pub authority: Option<String>,
     pub recipient: Option<String>,
-    pub log: Option<String>,
     pub url: Option<String>,
 }
 
@@ -126,6 +125,7 @@ struct GlobalState {
     xclients: Signal<Option<HashMap<Exchange, Box<dyn ExchangeClient>>>>,
     xupdate: Signal<bool>,
     reload: Signal<bool>,
+    log: Signal<Option<String>>,
 }
 
 #[derive(Routable, Clone)]
@@ -165,7 +165,6 @@ fn App() -> Element {
             amount: None,
             authority: Some(CONFIG.authority_keypair.clone()),
             recipient: None,
-            log: None,
             url: Some(CONFIG.json_rpc_url.clone()),
         }),
         prices: Signal::new(BTreeMap::default()),
@@ -175,6 +174,7 @@ fn App() -> Element {
         xclients: Signal::new(Some(xclients)),
         xupdate: Signal::new(false),
         reload: Signal::new(false),
+        log: Signal::new(None),
     });
 
     let mut prices = use_context::<GlobalState>().prices;
@@ -238,95 +238,78 @@ pub fn Main() -> Element {
 pub fn Menu() -> Element {
     let mut state = use_context::<GlobalState>().state;
     let url = state.read().url.clone().unwrap_or_default();
+    let sync = move |_| {
+        let account = use_context::<GlobalState>().account.read().clone();
+        let address = account.map(|x| x.address);
+        spawn(async move {
+            do_sync(address).await;
+            *(use_context::<GlobalState>().reload.write()) = true;
+            *(use_context::<GlobalState>().xupdate.write()) = true;
+        });
+    };
+    let split = move |_| {
+        let mut account = use_context::<GlobalState>().account;
+        let mut state = use_context::<GlobalState>().state;
+        spawn(async move {
+            do_split(&mut account, &mut state).await;
+            *(use_context::<GlobalState>().reload.write()) = true;
+        });
+    };
+    let deactivate = move |_| {
+        let mut account = use_context::<GlobalState>().account;
+        let state = use_context::<GlobalState>().state;
+        spawn(async move { do_deactivate(&mut account, &state).await });
+    };
+    let withdraw = move |_| {
+        let mut account = use_context::<GlobalState>().account;
+        let mut state = use_context::<GlobalState>().state;
+        spawn(async move {
+            do_withdraw(&mut account, &mut state).await;
+            *(use_context::<GlobalState>().reload.write()) = true;
+            *(use_context::<GlobalState>().xupdate.write()) = true;
+        });
+    };
+    let delegate = move |_| {
+        let mut account = use_context::<GlobalState>().account;
+        let state = use_context::<GlobalState>().state;
+        spawn(async move { do_delegate(&mut account, &state).await });
+    };
+    let swap = move |_| {
+        let mut account = use_context::<GlobalState>().account;
+        let mut state = use_context::<GlobalState>().state;
+        spawn(async move {
+            do_swap(&mut account, &mut state).await;
+            *(use_context::<GlobalState>().reload.write()) = true;
+        });
+    };
+    let merge = move |_| {
+        let mut account = use_context::<GlobalState>().account;
+        let state = use_context::<GlobalState>().state;
+        spawn(async move {
+            do_merge(&mut account, &state).await;
+            *(use_context::<GlobalState>().reload.write()) = true;
+        });
+    };
+    let disburse = move |_| {
+        let xaccount = use_context::<GlobalState>().xaccount.read().clone();
+        let xpmethod = use_context::<GlobalState>().xpmethod.read().clone();
+        let xclients = use_context::<GlobalState>().xclients;
+        let state = use_context::<GlobalState>().state;
+        spawn(async move {
+            do_disburse(xaccount, xpmethod, &xclients, &state).await;
+            *(use_context::<GlobalState>().xupdate.write()) = true;
+        });
+    };
     rsx! {
         div { id: "menu",
-            button {
-                onclick: move |_| {
-                    let account = use_context::<GlobalState>().account.read().clone();
-                    let address = account.map(|x| x.address);
-                    let mut state = use_context::<GlobalState>().state;
-                    spawn(async move {
-                        sync(address, &mut state).await;
-                        *(use_context::<GlobalState>().reload.write()) = true;
-                        *(use_context::<GlobalState>().xupdate.write()) = true;
-                    });
-                },
-                "Sync"
-            }
-            button {
-                onclick: move |_| {
-                    let mut account = use_context::<GlobalState>().account;
-                    let mut state = use_context::<GlobalState>().state;
-                    spawn(async move {
-                        split(&mut account, &mut state).await;
-                        *(use_context::<GlobalState>().reload.write()) = true;
-                    });
-                },
-                "Split"
-            }
-            button {
-                onclick: move |_| {
-                    let mut account = use_context::<GlobalState>().account;
-                    let mut state = use_context::<GlobalState>().state;
-                    spawn(async move { deactivate(&mut account, &mut state).await });
-                },
-                "Deactivate"
-            }
-            button {
-                onclick: move |_| {
-                    let mut account = use_context::<GlobalState>().account;
-                    let mut state = use_context::<GlobalState>().state;
-                    spawn(async move {
-                        withdraw(&mut account, &mut state).await;
-                        *(use_context::<GlobalState>().reload.write()) = true;
-                        *(use_context::<GlobalState>().xupdate.write()) = true;
-                    });
-                },
-                "Withdraw"
-            }
-            button {
-                onclick: move |_| {
-                    let mut account = use_context::<GlobalState>().account;
-                    let mut state = use_context::<GlobalState>().state;
-                    spawn(async move { delegate(&mut account, &mut state).await });
-                },
-                "Delegate"
-            }
-            button {
-                onclick: move |_| {
-                    let mut account = use_context::<GlobalState>().account;
-                    let mut state = use_context::<GlobalState>().state;
-                    spawn(async move {
-                        swap(&mut account, &mut state).await;
-                        *(use_context::<GlobalState>().reload.write()) = true;
-                    });
-                },
-                "Swap"
-            }
-            button {
-                onclick: move |_| {
-                    let mut account = use_context::<GlobalState>().account;
-                    let mut state = use_context::<GlobalState>().state;
-                    spawn(async move {
-                        merge(&mut account, &mut state).await;
-                        *(use_context::<GlobalState>().reload.write()) = true;
-                    });
-                },
-                "Merge"
-            }
-            button {
-                onclick: move |_| {
-                    let xaccount = use_context::<GlobalState>().xaccount.read().clone();
-                    let xpmethod = use_context::<GlobalState>().xpmethod.read().clone();
-                    let xclients = use_context::<GlobalState>().xclients;
-                    let mut state = use_context::<GlobalState>().state;
-                    spawn(async move {
-                        disburse(xaccount, xpmethod, &xclients, &mut state).await;
-                        *(use_context::<GlobalState>().xupdate.write()) = true;
-                    });
-                },
-                "Disburse"
-            }
+            button { onclick: sync, "Sync" }
+            button { onclick: split, "Split" }
+            button { onclick: deactivate, "Deactivate" }
+            button { onclick: withdraw, "Withdraw" }
+            button { onclick: delegate, "Delegate" }
+            button { onclick: swap, "Swap" }
+            button { onclick: merge, "Merge" }
+            button { onclick: disburse, "Disburse" }
             label { r#for: "json_rpc_url", "url:" }
             input {
                 id: "json_rpc_url",
@@ -761,42 +744,43 @@ fn LotItem(token: MaybeToken, lot: Lot, price: f64) -> Element {
     };
     let account = use_context::<GlobalState>().account.read().clone();
     let mut state = use_context::<GlobalState>().state;
+    let select_lot = move |event: Event<MouseData>| {
+        let lot = lot.lot_number;
+        let mut state = state.write();
+        let modifiers = event.data().modifiers();
+        if modifiers.shift() {
+            if let Some(ref account) = account {
+                let mut sel_end = 0;
+                let mut sel_beg = 0;
+                for (i, l) in account.lots.iter().enumerate() {
+                    if l.lot_number == lot {
+                        sel_end = i;
+                    } else if state.selected.contains(&l.lot_number) {
+                        sel_beg = i;
+                    }
+                }
+                if sel_beg > sel_end {
+                    std::mem::swap(&mut sel_beg, &mut sel_end);
+                }
+                for i in sel_beg..=sel_end {
+                    state.selected.insert(account.lots[i].lot_number);
+                }
+            }
+        } else if modifiers.meta() {
+            if state.selected.contains(&lot) {
+                state.selected.remove(&lot);
+            } else {
+                state.selected.insert(lot);
+            }
+        } else {
+            state.selected.clear();
+            state.selected.insert(lot);
+        }
+    };
     rsx! {
         tr {
             class: kind,
-            onclick: move |event| {
-                let lot = lot.lot_number;
-                let mut state = state.write();
-                let modifiers = event.data().modifiers();
-                if modifiers.shift() {
-                    if let Some(ref account) = account {
-                        let mut sel_end = 0;
-                        let mut sel_beg = 0;
-                        for (i, l) in account.lots.iter().enumerate() {
-                            if l.lot_number == lot {
-                                sel_end = i;
-                            } else if state.selected.contains(&l.lot_number) {
-                                sel_beg = i;
-                            }
-                        }
-                        if sel_beg > sel_end {
-                            std::mem::swap(&mut sel_beg, &mut sel_end);
-                        }
-                        for i in sel_beg..=sel_end {
-                            state.selected.insert(account.lots[i].lot_number);
-                        }
-                    }
-                } else if modifiers.meta() {
-                    if state.selected.contains(&lot) {
-                        state.selected.remove(&lot);
-                    } else {
-                        state.selected.insert(lot);
-                    }
-                } else {
-                    state.selected.clear();
-                    state.selected.insert(lot);
-                }
-            },
+            onclick: select_lot,
             td { class: "lot_number", "{lot_number}" }
             td { class: "lot_date", "{lot_date}" }
             td { class: "lot_amount", "{lot_amount}" }
@@ -972,8 +956,7 @@ pub fn Summary() -> Element {
 
 #[component]
 pub fn Log() -> Element {
-    let state = use_context::<GlobalState>().state;
-    let log = state.read().log.clone();
+    let log = use_context::<GlobalState>().log.read().clone();
     if let Some(content) = log {
         rsx! {
             div { id: "log",
@@ -1079,14 +1062,14 @@ macro_rules! make_arg_matches {
 }
 
 macro_rules! make_signer {
-    {$signer:ident, $state:ident} => {
+    {$signer:ident, $log:ident} => {
         {
             let arg_matches = make_arg_matches!("by", $signer, is_valid_signer);
             let mut wallet_manager = None;
             let (signer, address) = match signer_of(&arg_matches, "by", &mut wallet_manager) {
                 Ok(v) => v,
                 Err(e) => {
-                    $state.log = Some(format!("Invalid signer {}: {:?}", $signer, e));
+                    *$log.write() = Some(format!("Invalid signer {}: {:?}", $signer, e));
                     return;
                 }
             };
@@ -1095,9 +1078,9 @@ macro_rules! make_signer {
     }
 }
 
-async fn sync(address: Option<Pubkey>, state: &mut Signal<State>) {
-    let mut state = state.write();
-    state.log = None;
+async fn do_sync(address: Option<Pubkey>) {
+    let mut log = use_context::<GlobalState>().log;
+    *log.write() = None;
     let mut db = DB.write().unwrap();
     let rpc = RPC.read().unwrap();
     let notifier = Notifier::default();
@@ -1114,22 +1097,22 @@ async fn sync(address: Option<Pubkey>, state: &mut Signal<State>) {
     )
     .await
     {
-        state.log = Some(format!("Failed sys account sync {:?}: {:?}", address, e));
+        *log.write() = Some(format!("Failed sys account sync {:?}: {:?}", address, e));
         return;
     }
     let bytes = buffer.into_inner().unwrap();
-    state.log = Some(String::from_utf8(bytes).unwrap());
+    *log.write() = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn split(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
-    let mut state = state.write();
-    state.log = None;
-    if state.selected.is_empty() || selected_account.read().is_none() {
-        state.log = Some("Select account and lots to split".to_string());
+async fn do_split(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
+    let mut log = use_context::<GlobalState>().log;
+    *log.write() = None;
+    if state.read().selected.is_empty() || selected_account.read().is_none() {
+        *log.write() = Some("Select account and lots to split".to_string());
         return;
     }
-    if state.authority.is_none() {
-        state.log = Some("Enter staking authority keypair for account to be split".to_string());
+    if state.read().authority.is_none() {
+        *log.write() = Some("Enter staking authority keypair for account to be split".to_string());
         return;
     }
     let rpc = RPC.read().unwrap();
@@ -1139,19 +1122,19 @@ async fn split(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mu
     let amount = account
         .lots
         .iter()
-        .filter(|x| state.selected.contains(&x.lot_number))
+        .filter(|x| state.read().selected.contains(&x.lot_number))
         .fold(0, |acc, x| acc + x.amount);
     let description = None;
     let lot_selection_method = LotSelectionMethod::default();
     let lot_numbers = account
         .lots
         .iter()
-        .filter(|x| state.selected.contains(&x.lot_number))
+        .filter(|x| state.read().selected.contains(&x.lot_number))
         .map(|x| x.lot_number)
         .collect();
-    let authority = state.authority.clone().unwrap();
-    let (authority_signer, authority_address) = make_signer!(authority, state);
-    let recipient = state.recipient.clone();
+    let authority = state.read().authority.clone().unwrap();
+    let (authority_signer, authority_address) = make_signer!(authority, log);
+    let recipient = state.read().recipient.clone();
     let to_keypair = recipient.map(|r| {
         let arg_matches = make_arg_matches!("to", r, is_keypair);
         keypair_of(&arg_matches, "to").unwrap()
@@ -1176,7 +1159,7 @@ async fn split(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mu
     )
     .await
     {
-        state.log = Some(format!(
+        *log.write() = Some(format!(
             "Failed sys account split {:?} {}: {:?}",
             account.address,
             account.token.format_amount(amount),
@@ -1185,34 +1168,35 @@ async fn split(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mu
         return;
     }
     *selected_account.write() = None;
-    state.selected.clear();
+    state.write().selected.clear();
     let bytes = buffer.into_inner().unwrap();
-    state.log = Some(String::from_utf8(bytes).unwrap());
+    *log.write() = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn deactivate(
+async fn do_deactivate(
     selected_account: &mut Signal<Option<TrackedAccount>>,
-    state: &mut Signal<State>,
+    state: &Signal<State>,
 ) {
-    let mut state = state.write();
-    state.log = None;
+    let mut log = use_context::<GlobalState>().log;
+    let state = state.read();
+    *log.write() = None;
     if selected_account.read().is_none() {
-        state.log = Some("Select account to deactivate".to_string());
+        *log.write() = Some("Select account to deactivate".to_string());
         return;
     }
     if state.authority.is_none() {
-        state.log =
+        *log.write() =
             Some("Enter staking authority keypair for account to be deactivated".to_string());
         return;
     }
     let rpc = RPC.read().unwrap();
     let account = selected_account.read().clone().unwrap();
     let authority = state.authority.clone().unwrap();
-    state.log = Some(format!(
+    *log.write() = Some(format!(
         "deactivate-stake --stake-authority {} {}\nCheck ledger device for signing",
         authority, account.address,
     ));
-    let (authority_signer, authority_address) = make_signer!(authority, state);
+    let (authority_signer, authority_address) = make_signer!(authority, log);
     let mut buffer = std::io::BufWriter::new(Vec::new());
     if let Err(e) = process_stake_deactivate(
         &rpc,
@@ -1223,32 +1207,32 @@ async fn deactivate(
     )
     .await
     {
-        state.log = Some(format!(
+        *log.write() = Some(format!(
             "Failed solana deactivate-stake --stake-authority {:?} {:?}: {:?}",
             authority, account.address, e,
         ));
     }
     *selected_account.write() = None;
     let bytes = buffer.into_inner().unwrap();
-    state.log = Some(String::from_utf8(bytes).unwrap());
+    *log.write() = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn withdraw(
+async fn do_withdraw(
     selected_account: &mut Signal<Option<TrackedAccount>>,
     state: &mut Signal<State>,
 ) {
-    let mut state = state.write();
-    state.log = None;
-    if state.selected.is_empty() || selected_account.read().is_none() {
-        state.log = Some("Select account and lots to withdraw".to_string());
+    let mut log = use_context::<GlobalState>().log;
+    *log.write() = None;
+    if state.read().selected.is_empty() || selected_account.read().is_none() {
+        *log.write() = Some("Select account and lots to withdraw".to_string());
         return;
     }
-    if state.recipient.is_none() {
-        state.log = Some("Enter account address to deposit the withdrawn funds to".to_string());
+    if state.read().recipient.is_none() {
+        *log.write() = Some("Enter account address to deposit the withdrawn funds to".to_string());
         return;
     }
-    if state.authority.is_none() {
-        state.log =
+    if state.read().authority.is_none() {
+        *log.write() =
             Some("Enter withdraw authority keypair for account to withdraw from".to_string());
         return;
     }
@@ -1256,44 +1240,44 @@ async fn withdraw(
     let mut db = DB.write().unwrap();
     let account = selected_account.read().clone().unwrap();
     let from_address = account.address;
-    let amount = if state.amount.unwrap_or_default() > 0. {
-        account.token.amount(state.amount.unwrap())
+    let amount = if state.read().amount.unwrap_or_default() > 0. {
+        account.token.amount(state.read().amount.unwrap())
     } else {
         account
             .lots
             .iter()
-            .filter(|x| state.selected.contains(&x.lot_number))
+            .filter(|x| state.read().selected.contains(&x.lot_number))
             .fold(0, |acc, x| acc + x.amount)
     };
     let lot_numbers = account
         .lots
         .iter()
-        .filter(|x| state.selected.contains(&x.lot_number))
+        .filter(|x| state.read().selected.contains(&x.lot_number))
         .map(|x| x.lot_number)
         .collect();
     let lot_selection_method = LotSelectionMethod::default();
-    let recipient = state.recipient.clone().unwrap();
+    let recipient = state.read().recipient.clone().unwrap();
     let arg_matches = make_arg_matches!("to", recipient, is_valid_pubkey);
     let to_address = match pubkey_of(&arg_matches, "to") {
         Some(v) => v,
         None => {
-            state.log = Some(format!("Invalid address to deposit to {}", recipient));
+            *log.write() = Some(format!("Invalid address to deposit to {}", recipient));
             return;
         }
     };
     let mut buffer = std::io::BufWriter::new(Vec::new());
     if !account.token.is_sol() {
         if let Err(e) = process_token_transfer(
-            &state.url.clone().unwrap(),
-            &state.authority.clone().unwrap(),
+            &state.read().url.clone().unwrap(),
+            &state.read().authority.clone().unwrap(),
             &account.token.mint().to_string(),
             &format!("{}", account.token.ui_amount(amount)),
-            &state.recipient.clone().unwrap(),
+            &state.read().recipient.clone().unwrap(),
             &mut buffer,
         )
         .await
         {
-            state.log = Some(format!(
+            *log.write() = Some(format!(
                 "Failed spl-token transfer --owner {:?} {}: {:?}",
                 account.address,
                 account.token.format_amount(amount),
@@ -1302,7 +1286,7 @@ async fn withdraw(
             return;
         }
         *selected_account.write() = None;
-        state.selected.clear();
+        state.write().selected.clear();
         if let Err(e) = db.record_drop(
             account.address,
             account.token,
@@ -1310,14 +1294,14 @@ async fn withdraw(
             LotSelectionMethod::LastInFirstOut,
             Some(lot_numbers),
         ) {
-            state.log = Some(format!("Failed to drop lots: {e:#?}"));
+            *log.write() = Some(format!("Failed to drop lots: {e:#?}"));
         }
         let bytes = buffer.into_inner().unwrap();
-        state.log = Some(String::from_utf8(bytes).unwrap());
+        *log.write() = Some(String::from_utf8(bytes).unwrap());
         return;
     }
-    let authority = state.authority.clone().unwrap();
-    let (authority_signer, authority_address) = make_signer!(authority, state);
+    let authority = state.read().authority.clone().unwrap();
+    let (authority_signer, authority_address) = make_signer!(authority, log);
     let custodian = None;
     if let Err(e) = process_stake_withdraw(
         &mut db,
@@ -1334,7 +1318,7 @@ async fn withdraw(
     )
     .await
     {
-        state.log = Some(format!(
+        *log.write() = Some(format!(
             "Failed solana withdraw-stake {:?} {}: {:?}",
             account.address,
             account.token.format_amount(amount),
@@ -1343,27 +1327,28 @@ async fn withdraw(
         return;
     }
     *selected_account.write() = None;
-    state.selected.clear();
+    state.write().selected.clear();
     let bytes = buffer.into_inner().unwrap();
-    state.log = Some(String::from_utf8(bytes).unwrap());
+    *log.write() = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn delegate(
+async fn do_delegate(
     selected_account: &mut Signal<Option<TrackedAccount>>,
-    state: &mut Signal<State>,
+    state: &Signal<State>,
 ) {
-    let mut state = state.write();
-    state.log = None;
+    let mut log = use_context::<GlobalState>().log;
+    let state = state.read();
+    *log.write() = None;
     if selected_account.read().is_none() {
-        state.log = Some("Select account to delegate".to_string());
+        *log.write() = Some("Select account to delegate".to_string());
         return;
     }
     if state.recipient.is_none() {
-        state.log = Some("Enter validator address to delegate to".to_string());
+        *log.write() = Some("Enter validator address to delegate to".to_string());
         return;
     }
     if state.authority.is_none() {
-        state.log = Some("Enter staking authority keypair for account to delegate".to_string());
+        *log.write() = Some("Enter staking authority keypair for account to delegate".to_string());
         return;
     }
     let rpc = RPC.read().unwrap();
@@ -1374,12 +1359,12 @@ async fn delegate(
     let to_address = match pubkey_of(&arg_matches, "to") {
         Some(v) => v,
         None => {
-            state.log = Some(format!("Invalid validator address {}", recipient));
+            *log.write() = Some(format!("Invalid validator address {}", recipient));
             return;
         }
     };
     let authority = state.authority.clone().unwrap();
-    let (authority_signer, authority_address) = make_signer!(authority, state);
+    let (authority_signer, authority_address) = make_signer!(authority, log);
     let mut buffer = std::io::BufWriter::new(Vec::new());
     if let Err(e) = process_stake_delegate(
         &rpc,
@@ -1391,32 +1376,33 @@ async fn delegate(
     )
     .await
     {
-        state.log = Some(format!(
+        *log.write() = Some(format!(
             "Failed solana delegate-stake --stake-authority {} {} {}: {:?}",
             authority, from_address, to_address, e,
         ));
     }
     *selected_account.write() = None;
     let bytes = buffer.into_inner().unwrap();
-    state.log = Some(String::from_utf8(bytes).unwrap());
+    *log.write() = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
+async fn do_swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
+    let mut log = use_context::<GlobalState>().log;
     let mut state = state.write();
-    state.log = None;
+    *log.write() = None;
     if state.selected.is_empty() || selected_account.read().is_none() {
-        state.log = Some("Select account and lots to swap".to_string());
+        *log.write() = Some("Select account and lots to swap".to_string());
         return;
     }
     if state.authority.is_none() {
-        state.log = Some("Enter signer keypair for swap".to_string());
+        *log.write() = Some("Enter signer keypair for swap".to_string());
         return;
     }
     let rpc = RPC.read().unwrap();
     let mut db = DB.write().unwrap();
     let account = selected_account.read().clone().unwrap();
     let authority = state.authority.clone().unwrap();
-    let (signer, address) = make_signer!(authority, state);
+    let (signer, address) = make_signer!(authority, log);
     let from_token = account.token;
     let recipient = state.recipient.clone().unwrap_or_default();
     let to_token = MaybeToken::from(
@@ -1468,7 +1454,7 @@ async fn swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut
     )
     .await
     {
-        state.log = Some(format!(
+        *log.write() = Some(format!(
             "Failed sys jup swap {:?} {} {} {}: {:?}",
             authority,
             from_token,
@@ -1479,28 +1465,29 @@ async fn swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut
         return;
     }
     if let Err(e) = process_sync_swaps(&mut db, rpc.default(), &notifier, &mut buffer).await {
-        state.log = Some(format!("Failed sys sync: {:?}", e,));
+        *log.write() = Some(format!("Failed sys sync: {:?}", e,));
         return;
     }
     *selected_account.write() = None;
     state.selected.clear();
     let bytes = buffer.into_inner().unwrap();
-    state.log = Some(String::from_utf8(bytes).unwrap());
+    *log.write() = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn merge(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
-    let mut state = state.write();
-    state.log = None;
+async fn do_merge(selected_account: &mut Signal<Option<TrackedAccount>>, state: &Signal<State>) {
+    let mut log = use_context::<GlobalState>().log;
+    let state = state.read();
+    *log.write() = None;
     if selected_account.read().is_none() {
-        state.log = Some("Select account to merge".to_string());
+        *log.write() = Some("Select account to merge".to_string());
         return;
     }
     if state.recipient.is_none() {
-        state.log = Some("Enter account address to be merged into".to_string());
+        *log.write() = Some("Enter account address to be merged into".to_string());
         return;
     }
     if state.authority.is_none() {
-        state.log = Some("Enter staking authority keypair for account to be merged".to_string());
+        *log.write() = Some("Enter staking authority keypair for account to be merged".to_string());
         return;
     }
     let rpc = RPC.read().unwrap();
@@ -1512,12 +1499,12 @@ async fn merge(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mu
     let into_address = match pubkey_of(&arg_matches, "to") {
         Some(v) => v,
         None => {
-            state.log = Some(format!("Invalid address to merge into {}", recipient));
+            *log.write() = Some(format!("Invalid address to merge into {}", recipient));
             return;
         }
     };
     let authority = state.authority.clone().unwrap();
-    let (authority_signer, authority_address) = make_signer!(authority, state);
+    let (authority_signer, authority_address) = make_signer!(authority, log);
     let priority_fee = PriorityFee::default_auto();
     let signature = None;
     let mut buffer = std::io::BufWriter::new(Vec::new());
@@ -1534,7 +1521,7 @@ async fn merge(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mu
     )
     .await
     {
-        state.log = Some(format!(
+        *log.write() = Some(format!(
             "Failed sys account merge {:?} --into {:?}: {:?}",
             from_address, into_address, e,
         ));
@@ -1542,23 +1529,24 @@ async fn merge(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mu
     }
     *selected_account.write() = None;
     let bytes = buffer.into_inner().unwrap();
-    state.log = Some(String::from_utf8(bytes).unwrap());
+    *log.write() = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn disburse(
+async fn do_disburse(
     xaccount: Option<(Exchange, String)>,
     xpmethod: Option<(Exchange, String)>,
     xclients: &Signal<Option<HashMap<Exchange, Box<dyn ExchangeClient>>>>,
-    state: &mut Signal<State>,
+    state: &Signal<State>,
 ) {
-    let mut state = state.write();
+    let mut log = use_context::<GlobalState>().log;
+    let state = state.read();
     let xclients = xclients.read();
     if xaccount.is_none() {
-        state.log = Some("Select exchange account from which to disburse cash".to_string());
+        *log.write() = Some("Select exchange account from which to disburse cash".to_string());
         return;
     }
     if xpmethod.is_none() {
-        state.log = Some("Select bank account to which to disburse cash".to_string());
+        *log.write() = Some("Select bank account to which to disburse cash".to_string());
         return;
     }
     let (exchange, account) = xaccount.unwrap();
@@ -1568,7 +1556,7 @@ async fn disburse(
     } else {
         let accounts = client.accounts().await;
         if let Err(e) = accounts {
-            state.log = Some(format!("Couldn't get exchange accounts {e}"));
+            *log.write() = Some(format!("Couldn't get exchange accounts {e}"));
             return;
         }
         accounts
@@ -1580,7 +1568,7 @@ async fn disburse(
     };
     let methods = client.payment_methods().await;
     if let Err(e) = methods {
-        state.log = Some(format!("Couldn't get exchange payment methods {e}"));
+        *log.write() = Some(format!("Couldn't get exchange payment methods {e}"));
         return;
     }
     let method = xpmethod.unwrap().1;
@@ -1595,12 +1583,12 @@ async fn disburse(
         .await;
     match disbursement {
         Ok(d) => {
-            state.log = Some(format!(
+            *log.write() = Some(format!(
                 "Disbursed cash ${}, fee ${}, reference {} {:#?}",
                 d.total, d.total_fee, d.user_reference, d.user_warnings,
             ))
         }
-        Err(e) => state.log = Some(format!("{e}")),
+        Err(e) => *log.write() = Some(format!("{e}")),
     }
 }
 
