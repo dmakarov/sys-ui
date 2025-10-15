@@ -102,7 +102,6 @@ enum Sorting {
 #[derive(Clone, Props)]
 struct State {
     pub sorted: Option<Sorting>,
-    pub selected: BTreeSet<usize>,
     pub amount: Option<f64>,
     pub authority: Option<String>,
     pub recipient: Option<String>,
@@ -120,6 +119,7 @@ struct GlobalState {
     state: Signal<State>,
     prices: Signal<BTreeMap<String, f64>>,
     account: Signal<Option<TrackedAccount>>,
+    selected: Signal<BTreeSet<usize>>,
     xaccount: Signal<Option<(Exchange, String)>>,
     xpmethod: Signal<Option<(Exchange, String)>>,
     xclients: Signal<Option<HashMap<Exchange, Box<dyn ExchangeClient>>>>,
@@ -158,11 +158,11 @@ fn App() -> Element {
             }
         }
     }
+    let selected = use_signal(|| BTreeSet::default());
     let log = use_signal(|| None);
     let _global_state = use_context_provider(|| GlobalState {
         state: Signal::new(State {
             sorted: None,
-            selected: BTreeSet::default(),
             amount: None,
             authority: Some(CONFIG.authority_keypair.clone()),
             recipient: None,
@@ -170,6 +170,7 @@ fn App() -> Element {
         }),
         prices: Signal::new(BTreeMap::default()),
         account: Signal::new(None),
+        selected,
         xaccount: Signal::new(None),
         xpmethod: Signal::new(None),
         xclients: Signal::new(Some(xclients)),
@@ -723,7 +724,7 @@ fn AccountItem(account: TrackedAccount) -> Element {
                 }
                 let is_meta = modifiers.meta() || (modifiers.alt() && modifiers.ctrl());
                 if is_meta || kind == "regular" {
-                    state.selected.clear();
+                    use_context::<GlobalState>().selected.write().clear();
                 }
                 let mut selected_account = use_context::<GlobalState>().account;
                 *selected_account.write() = if is_meta && kind == "selected" {
@@ -739,8 +740,7 @@ fn AccountItem(account: TrackedAccount) -> Element {
 
 #[component]
 fn LotItem(token: MaybeToken, lot: Lot, price: f64) -> Element {
-    let state = use_context::<GlobalState>().state;
-    let selected = &state.read().selected;
+    let mut selected = use_context::<GlobalState>().selected;
     let lot_number = format!("{}", lot.lot_number);
     let lot_amount = token.format_amount(lot.amount).to_string();
     let lot_date = format!("{}", lot.acquisition.when);
@@ -761,16 +761,15 @@ fn LotItem(token: MaybeToken, lot: Lot, price: f64) -> Element {
         (token.ui_amount(lot.amount) * (price - f64::try_from(lot.acquisition.price()).unwrap()))
             .separated_string_with_fixed_place(2)
     );
-    let kind = if selected.contains(&lot.lot_number) {
+    let kind = if selected.read().contains(&lot.lot_number) {
         "selected"
     } else {
         "regular"
     };
     let account = use_context::<GlobalState>().account.read().clone();
-    let mut state = use_context::<GlobalState>().state;
     let select_lot = move |event: Event<MouseData>| {
         let lot = lot.lot_number;
-        let mut state = state.write();
+        let mut selected = selected.write();
         let modifiers = event.data().modifiers();
         if modifiers.shift() {
             if let Some(ref account) = account {
@@ -779,7 +778,7 @@ fn LotItem(token: MaybeToken, lot: Lot, price: f64) -> Element {
                 for (i, l) in account.lots.iter().enumerate() {
                     if l.lot_number == lot {
                         sel_end = i;
-                    } else if state.selected.contains(&l.lot_number) {
+                    } else if selected.contains(&l.lot_number) {
                         sel_beg = i;
                     }
                 }
@@ -787,18 +786,18 @@ fn LotItem(token: MaybeToken, lot: Lot, price: f64) -> Element {
                     std::mem::swap(&mut sel_beg, &mut sel_end);
                 }
                 for i in sel_beg..=sel_end {
-                    state.selected.insert(account.lots[i].lot_number);
+                    selected.insert(account.lots[i].lot_number);
                 }
             }
         } else if modifiers.meta() {
-            if state.selected.contains(&lot) {
-                state.selected.remove(&lot);
+            if selected.contains(&lot) {
+                selected.remove(&lot);
             } else {
-                state.selected.insert(lot);
+                selected.insert(lot);
             }
         } else {
-            state.selected.clear();
-            state.selected.insert(lot);
+            selected.clear();
+            selected.insert(lot);
         }
     };
     rsx! {
@@ -882,7 +881,7 @@ pub fn Input() -> Element {
 pub fn Summary() -> Element {
     let selected_account = use_context::<GlobalState>().account.read().clone();
     let prices = use_context::<GlobalState>().prices.read().clone();
-    let state = use_context::<GlobalState>().state;
+    let selected = use_context::<GlobalState>().selected;
     let db = DB.read().unwrap();
     let (long_term_gain_tax_rate, short_term_gain_tax_rate) =
         if let Some(ref rate) = db.get_tax_rate() {
@@ -919,17 +918,17 @@ pub fn Summary() -> Element {
         }
     }
     summary = format!("{summary})");
-    if !state.read().selected.is_empty() {
+    if !selected.read().is_empty() {
         if let Some(account) = selected_account {
             let selected_lots_value = account
                 .lots
                 .iter()
-                .filter(|x| state.read().selected.contains(&x.lot_number))
+                .filter(|x| selected.read().contains(&x.lot_number))
                 .fold(0u64, |acc, x| acc + x.amount);
             let cost = account
                 .lots
                 .iter()
-                .filter(|x| state.read().selected.contains(&x.lot_number))
+                .filter(|x| selected.read().contains(&x.lot_number))
                 .fold(0f64, |acc, x| {
                     acc + x.acquisition.price().to_f64().unwrap()
                         * account.token.ui_amount(x.amount)
@@ -938,7 +937,7 @@ pub fn Summary() -> Element {
             let (short_gain, long_gain) = account
                 .lots
                 .iter()
-                .filter(|x| state.read().selected.contains(&x.lot_number))
+                .filter(|x| selected.read().contains(&x.lot_number))
                 .fold((0f64, 0f64), |acc, x| {
                     let amount = account.token.ui_amount(x.amount);
                     let basis = amount * x.acquisition.price().to_f64().unwrap();
@@ -1107,8 +1106,9 @@ async fn do_split(
     state: &mut Signal<State>,
 ) {
     let mut log = use_context::<GlobalState>().log;
+    let mut selected = use_context::<GlobalState>().selected;
     *log.write() = None;
-    if state.read().selected.is_empty() || selected_account.read().is_none() {
+    if selected.read().is_empty() || selected_account.read().is_none() {
         *log.write() = Some("Select account and lots to split".to_string());
         return;
     }
@@ -1123,14 +1123,14 @@ async fn do_split(
     let amount = account
         .lots
         .iter()
-        .filter(|x| state.read().selected.contains(&x.lot_number))
+        .filter(|x| selected.read().contains(&x.lot_number))
         .fold(0, |acc, x| acc + x.amount);
     let description = None;
     let lot_selection_method = LotSelectionMethod::default();
     let lot_numbers = account
         .lots
         .iter()
-        .filter(|x| state.read().selected.contains(&x.lot_number))
+        .filter(|x| selected.read().contains(&x.lot_number))
         .map(|x| x.lot_number)
         .collect();
     let authority = state.read().authority.clone().unwrap();
@@ -1169,7 +1169,7 @@ async fn do_split(
         return;
     }
     *selected_account.write() = None;
-    state.write().selected.clear();
+    selected.write().clear();
     let bytes = buffer.into_inner().unwrap();
     *log.write() = Some(String::from_utf8(bytes).unwrap());
 }
@@ -1223,8 +1223,9 @@ async fn do_withdraw(
     state: &mut Signal<State>,
 ) {
     let mut log = use_context::<GlobalState>().log;
+    let mut selected = use_context::<GlobalState>().selected;
     *log.write() = None;
-    if state.read().selected.is_empty() || selected_account.read().is_none() {
+    if selected.read().is_empty() || selected_account.read().is_none() {
         *log.write() = Some("Select account and lots to withdraw".to_string());
         return;
     }
@@ -1247,13 +1248,13 @@ async fn do_withdraw(
         account
             .lots
             .iter()
-            .filter(|x| state.read().selected.contains(&x.lot_number))
+            .filter(|x| selected.read().contains(&x.lot_number))
             .fold(0, |acc, x| acc + x.amount)
     };
     let lot_numbers = account
         .lots
         .iter()
-        .filter(|x| state.read().selected.contains(&x.lot_number))
+        .filter(|x| selected.read().contains(&x.lot_number))
         .map(|x| x.lot_number)
         .collect();
     let lot_selection_method = LotSelectionMethod::default();
@@ -1287,7 +1288,7 @@ async fn do_withdraw(
             return;
         }
         *selected_account.write() = None;
-        state.write().selected.clear();
+        selected.write().clear();
         if let Err(e) = db.record_drop(
             account.address,
             account.token,
@@ -1328,7 +1329,7 @@ async fn do_withdraw(
         return;
     }
     *selected_account.write() = None;
-    state.write().selected.clear();
+    selected.write().clear();
     let bytes = buffer.into_inner().unwrap();
     *log.write() = Some(String::from_utf8(bytes).unwrap());
 }
@@ -1386,9 +1387,10 @@ async fn do_delegate(selected_account: &mut Signal<Option<TrackedAccount>>, stat
 
 async fn do_swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
     let mut log = use_context::<GlobalState>().log;
+    let mut selected = use_context::<GlobalState>().selected;
     let mut state = state.write();
     *log.write() = None;
-    if state.selected.is_empty() || selected_account.read().is_none() {
+    if selected.read().is_empty() || selected_account.read().is_none() {
         *log.write() = Some("Select account and lots to swap".to_string());
         return;
     }
@@ -1413,7 +1415,7 @@ async fn do_swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &
     let amount = account
         .lots
         .iter()
-        .filter(|x| state.selected.contains(&x.lot_number))
+        .filter(|x| selected.read().contains(&x.lot_number))
         .fold(0, |acc, x| acc + x.amount);
     let ui_amount = Some(from_token.ui_amount(amount));
     let slippage_bps = 100u64;
@@ -1421,7 +1423,7 @@ async fn do_swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &
     let lot_numbers = account
         .lots
         .iter()
-        .filter(|x| state.selected.contains(&x.lot_number))
+        .filter(|x| selected.read().contains(&x.lot_number))
         .map(|x| x.lot_number)
         .collect();
     let signature = None;
@@ -1467,7 +1469,7 @@ async fn do_swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &
         return;
     }
     *selected_account.write() = None;
-    state.selected.clear();
+    selected.write().clear();
     let bytes = buffer.into_inner().unwrap();
     *log.write() = Some(String::from_utf8(bytes).unwrap());
 }
