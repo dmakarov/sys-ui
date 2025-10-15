@@ -158,6 +158,7 @@ fn App() -> Element {
             }
         }
     }
+    let log = use_signal(|| None);
     let _global_state = use_context_provider(|| GlobalState {
         state: Signal::new(State {
             sorted: None,
@@ -174,7 +175,7 @@ fn App() -> Element {
         xclients: Signal::new(Some(xclients)),
         xupdate: Signal::new(false),
         reload: Signal::new(false),
-        log: Signal::new(None),
+        log,
     });
 
     let mut prices = use_context::<GlobalState>().prices;
@@ -242,9 +243,32 @@ pub fn Menu() -> Element {
         let account = use_context::<GlobalState>().account.read().clone();
         let address = account.map(|x| x.address);
         spawn(async move {
-            do_sync(address).await;
-            *(use_context::<GlobalState>().reload.write()) = true;
-            *(use_context::<GlobalState>().xupdate.write()) = true;
+            let mut buffer = std::io::BufWriter::new(Vec::new());
+            match process_account_sync(
+                &mut DB.write().unwrap(),
+                &RPC.read().unwrap(),
+                address,
+                None,
+                false,
+                false,
+                &Notifier::default(),
+                &mut buffer,
+            )
+            .await
+            {
+                Ok(()) => {
+                    let bytes = buffer.into_inner().unwrap();
+                    consume_context::<GlobalState>()
+                        .log
+                        .set(Some(String::from_utf8(bytes).unwrap()));
+                }
+                Err(e) => consume_context::<GlobalState>().log.set(Some(format!(
+                    "Failed sys account sync {:?}: {:?}",
+                    address, e
+                ))),
+            }
+            consume_context::<GlobalState>().reload.set(true);
+            consume_context::<GlobalState>().xupdate.set(true);
         });
     };
     let split = move |_| {
@@ -1078,33 +1102,10 @@ macro_rules! make_signer {
     }
 }
 
-async fn do_sync(address: Option<Pubkey>) {
-    let mut log = use_context::<GlobalState>().log;
-    *log.write() = None;
-    let mut db = DB.write().unwrap();
-    let rpc = RPC.read().unwrap();
-    let notifier = Notifier::default();
-    let mut buffer = std::io::BufWriter::new(Vec::new());
-    if let Err(e) = process_account_sync(
-        &mut db,
-        &rpc,
-        address,
-        None,
-        false,
-        false,
-        &notifier,
-        &mut buffer,
-    )
-    .await
-    {
-        *log.write() = Some(format!("Failed sys account sync {:?}: {:?}", address, e));
-        return;
-    }
-    let bytes = buffer.into_inner().unwrap();
-    *log.write() = Some(String::from_utf8(bytes).unwrap());
-}
-
-async fn do_split(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
+async fn do_split(
+    selected_account: &mut Signal<Option<TrackedAccount>>,
+    state: &mut Signal<State>,
+) {
     let mut log = use_context::<GlobalState>().log;
     *log.write() = None;
     if state.read().selected.is_empty() || selected_account.read().is_none() {
@@ -1332,10 +1333,7 @@ async fn do_withdraw(
     *log.write() = Some(String::from_utf8(bytes).unwrap());
 }
 
-async fn do_delegate(
-    selected_account: &mut Signal<Option<TrackedAccount>>,
-    state: &Signal<State>,
-) {
+async fn do_delegate(selected_account: &mut Signal<Option<TrackedAccount>>, state: &Signal<State>) {
     let mut log = use_context::<GlobalState>().log;
     let state = state.read();
     *log.write() = None;
