@@ -1374,6 +1374,8 @@ async fn do_delegate(selected_account: &mut Signal<Option<TrackedAccount>>, stat
             authority, from_address, to_address, e,
         ));
     }
+    let mut db = DB.write().unwrap();
+    adjust_balance(&mut db, authority_address);
     *selected_account.write() = None;
     let bytes = buffer.into_inner().unwrap();
     *log.write() = Some(String::from_utf8(bytes).unwrap());
@@ -1382,7 +1384,7 @@ async fn do_delegate(selected_account: &mut Signal<Option<TrackedAccount>>, stat
 async fn do_swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
     let mut log = use_context::<GlobalState>().log;
     let mut selected = use_context::<GlobalState>().selected;
-    let mut state = state.write();
+    let state = state.read();
     *log.write() = None;
     if selected.read().is_empty() || selected_account.read().is_none() {
         *log.write() = Some("Select account and lots to swap".to_string());
@@ -1522,6 +1524,7 @@ async fn do_merge(selected_account: &mut Signal<Option<TrackedAccount>>, state: 
         ));
         return;
     }
+    adjust_balance(&mut db, authority_address);
     *selected_account.write() = None;
     let bytes = buffer.into_inner().unwrap();
     *log.write() = Some(String::from_utf8(bytes).unwrap());
