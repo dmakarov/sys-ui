@@ -1156,6 +1156,7 @@ async fn do_split(
         ));
         return;
     }
+    adjust_balance(&mut db, authority_address);
     *selected_account.write() = None;
     selected.write().clear();
     let bytes = buffer.into_inner().unwrap();
@@ -1201,6 +1202,8 @@ async fn do_deactivate(
             authority, account.address, e,
         ));
     }
+    let mut db = DB.write().unwrap();
+    adjust_balance(&mut db, authority_address);
     *selected_account.write() = None;
     let bytes = buffer.into_inner().unwrap();
     *log.write() = Some(String::from_utf8(bytes).unwrap());
@@ -1255,11 +1258,12 @@ async fn do_withdraw(
             return;
         }
     };
+    let authority = state.read().authority.clone().unwrap();
     let mut buffer = std::io::BufWriter::new(Vec::new());
     if !account.token.is_sol() {
         if let Err(e) = process_token_transfer(
             &state.read().url.clone().unwrap(),
-            &state.read().authority.clone().unwrap(),
+            &authority,
             &account.token.mint().to_string(),
             &format!("{}", account.token.ui_amount(amount)),
             &state.read().recipient.clone().unwrap(),
@@ -1275,6 +1279,8 @@ async fn do_withdraw(
             ));
             return;
         }
+        let (_, authority_address) = make_signer!(authority, log);
+        adjust_balance(&mut db, authority_address);
         *selected_account.write() = None;
         selected.write().clear();
         if let Err(e) = db.record_drop(
@@ -1290,9 +1296,8 @@ async fn do_withdraw(
         *log.write() = Some(String::from_utf8(bytes).unwrap());
         return;
     }
-    let authority = state.read().authority.clone().unwrap();
-    let (authority_signer, authority_address) = make_signer!(authority, log);
     let custodian = None;
+    let (authority_signer, authority_address) = make_signer!(authority, log);
     if let Err(e) = process_stake_withdraw(
         &mut db,
         &rpc,
@@ -1316,6 +1321,7 @@ async fn do_withdraw(
         ));
         return;
     }
+    adjust_balance(&mut db, authority_address);
     *selected_account.write() = None;
     selected.write().clear();
     let bytes = buffer.into_inner().unwrap();
@@ -1456,6 +1462,7 @@ async fn do_swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &
         *log.write() = Some(format!("Failed sys sync: {:?}", e,));
         return;
     }
+    adjust_balance(&mut db, address);
     *selected_account.write() = None;
     selected.write().clear();
     let bytes = buffer.into_inner().unwrap();
@@ -1927,4 +1934,32 @@ pub fn get_account_state<W: Write>(
         writeln!(writer, "improbable account")?;
     }
     Ok(())
+}
+
+fn get_account_balance(
+    rpc_clients: &RpcClients,
+    address: Pubkey,
+) -> Result<u64, Box<dyn std::error::Error>> {
+    let rpc_client = rpc_clients.default();
+    let account = rpc_client.get_account(&address)?;
+    Ok(account.lamports)
+}
+
+fn adjust_balance(db: &mut Db, address: Pubkey) {
+    if let Some(mut account) = db
+        .get_accounts()
+        .into_iter()
+        .find(|x| x.token.is_sol() && x.address == address)
+    {
+        let rpc = RPC.read().unwrap();
+        let network_balance = get_account_balance(&rpc, address).unwrap_or_default();
+        if network_balance > 0 && network_balance < account.last_update_balance {
+            let fee = account.last_update_balance - network_balance;
+            if fee < account.lots[0].amount {
+                account.last_update_balance = network_balance;
+                account.lots[0].amount -= fee;
+                db.update_account(account).unwrap();
+            }
+        }
+    }
 }
