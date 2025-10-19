@@ -1382,22 +1382,26 @@ async fn do_delegate(selected_account: &mut Signal<Option<TrackedAccount>>, stat
 }
 
 async fn do_swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &mut Signal<State>) {
-    let mut log = use_context::<GlobalState>().log;
     let mut selected = use_context::<GlobalState>().selected;
     let state = state.read();
-    *log.write() = None;
+    consume_context::<GlobalState>().log.set(None);
     if selected.read().is_empty() || selected_account.read().is_none() {
-        *log.write() = Some("Select account and lots to swap".to_string());
+        consume_context::<GlobalState>()
+            .log
+            .set(Some("Select account and lots to swap".to_string()));
         return;
     }
     if state.authority.is_none() {
-        *log.write() = Some("Enter signer keypair for swap".to_string());
+        consume_context::<GlobalState>()
+            .log
+            .set(Some("Enter signer keypair for swap".to_string()));
         return;
     }
     let rpc = RPC.read().unwrap();
     let mut db = DB.write().unwrap();
     let account = selected_account.read().clone().unwrap();
     let authority = state.authority.clone().unwrap();
+    let mut log = use_context::<GlobalState>().log;
     let (signer, address) = make_signer!(authority, log);
     let from_token = account.token;
     let recipient = state.recipient.clone().unwrap_or_default();
@@ -1429,7 +1433,7 @@ async fn do_swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &
     let priority_fee = PriorityFee::default_auto();
     let notifier = Notifier::default();
     let mut buffer = std::io::BufWriter::new(Vec::new());
-    if let Err(e) = process_jup_swap(
+    match process_jup_swap(
         &mut db,
         &rpc,
         address,
@@ -1450,25 +1454,29 @@ async fn do_swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &
     )
     .await
     {
-        *log.write() = Some(format!(
+        Ok(()) => match process_sync_swaps(&mut db, rpc.default(), &notifier, &mut buffer).await {
+            Ok(()) => {
+                adjust_balance(&mut db, address);
+                *selected_account.write() = None;
+                selected.write().clear();
+                let bytes = buffer.into_inner().unwrap();
+                consume_context::<GlobalState>()
+                    .log
+                    .set(Some(String::from_utf8(bytes).unwrap()))
+            }
+            Err(e) => consume_context::<GlobalState>()
+                .log
+                .set(Some(format!("Failed sync swaps: {:?}", e,))),
+        },
+        Err(e) => consume_context::<GlobalState>().log.set(Some(format!(
             "Failed sys jup swap {:?} {} {} {}: {:?}",
             authority,
             from_token,
             to_token,
             from_token.ui_amount(amount),
             e,
-        ));
-        return;
+        ))),
     }
-    if let Err(e) = process_sync_swaps(&mut db, rpc.default(), &notifier, &mut buffer).await {
-        *log.write() = Some(format!("Failed sys sync: {:?}", e,));
-        return;
-    }
-    adjust_balance(&mut db, address);
-    *selected_account.write() = None;
-    selected.write().clear();
-    let bytes = buffer.into_inner().unwrap();
-    *log.write() = Some(String::from_utf8(bytes).unwrap());
 }
 
 async fn do_merge(selected_account: &mut Signal<Option<TrackedAccount>>, state: &Signal<State>) {
