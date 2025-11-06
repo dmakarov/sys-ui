@@ -654,6 +654,7 @@ pub fn Lots() -> Element {
                             "Amount"
                         }
                         th {
+                            id: "lot_price",
                             onclick: move |_| {
                                 let sorted = state.read().sorted.clone();
                                 let mut v = true;
@@ -795,7 +796,7 @@ fn LotItem(token: MaybeToken, lot: Lot, price: f64) -> Element {
             td { class: "lot_number", "{lot_number}" }
             td { class: "lot_date", "{lot_date}" }
             td { class: "lot_amount", "{lot_amount}" }
-            td { "{lot_price}" }
+            td { class: "lot_price", "{lot_price}" }
             td { class: "lot_term", "{term}" }
             td { "{gain}" }
         }

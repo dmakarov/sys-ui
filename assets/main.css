@@ -78,7 +78,7 @@ a:hover, a:focus, a:active {
 }
 
 #accounts {
-    width: 570px;
+    width: 600px;
     display: flex;
     flex-direction: column;
     /* border: cyan 1px solid; */
@@ -221,7 +221,10 @@ table {
         width: 5em;
     }
     th#lot_amount {
-        width: 12em;
+        width: 11em;
+    }
+    th#lot_price {
+        width: 4em;
     }
     th#lot_term {
         width: 3em;
@@ -248,7 +251,10 @@ table {
         text-align: center;
     }
     td.lot_amount {
-        width: 12em;
+        width: 11em;
+    }
+    td.lot_price {
+        width: 4em;
     }
     td.lot_term {
         width: 3em;
