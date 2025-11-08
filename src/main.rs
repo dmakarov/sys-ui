@@ -693,7 +693,7 @@ fn AccountItem(account: TrackedAccount) -> Element {
         "{:?} ({}) {}",
         account.address,
         account.token.name(),
-        account.token.format_amount(account.last_update_balance),
+        account.token.ui_amount(account.last_update_balance),
     );
     let mut kind = "regular";
     if let Some(selected_account) = selected_account {
