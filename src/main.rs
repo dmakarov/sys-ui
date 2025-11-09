@@ -756,15 +756,57 @@ fn LotItem(token: MaybeToken, lot: Lot, price: f64) -> Element {
         "regular"
     };
     let account = use_context::<GlobalState>().account.read().clone();
+    let sorted = use_context::<GlobalState>().state.read().sorted.clone();
     let select_lot = move |event: Event<MouseData>| {
         let lot = lot.lot_number;
         let mut selected = selected.write();
         let modifiers = event.data().modifiers();
         if modifiers.shift() {
             if let Some(ref account) = account {
+                let mut lots = account.lots.clone();
+                if let Some(sorting) = sorted.clone() {
+                    match sorting {
+                        Sorting::Lot(d) => {
+                            lots.sort_by(|a, b| {
+                                if d {
+                                    a.lot_number.cmp(&b.lot_number)
+                                } else {
+                                    b.lot_number.cmp(&a.lot_number)
+                                }
+                            });
+                        }
+                        Sorting::Date(d) => {
+                            lots.sort_by(|a, b| {
+                                if d {
+                                    a.acquisition.when.cmp(&b.acquisition.when)
+                                } else {
+                                    b.acquisition.when.cmp(&a.acquisition.when)
+                                }
+                            });
+                        }
+                        Sorting::Amount(d) => {
+                            lots.sort_by(|a, b| {
+                                if d {
+                                    a.amount.cmp(&b.amount)
+                                } else {
+                                    b.amount.cmp(&a.amount)
+                                }
+                            });
+                        }
+                        Sorting::Price(d) => {
+                            lots.sort_by(|a, b| {
+                                if d {
+                                    a.acquisition.price().cmp(&b.acquisition.price())
+                                } else {
+                                    b.acquisition.price().cmp(&a.acquisition.price())
+                                }
+                            });
+                        }
+                    }
+                }
                 let mut sel_end = 0;
                 let mut sel_beg = 0;
-                for (i, l) in account.lots.iter().enumerate() {
+                for (i, l) in lots.iter().enumerate() {
                     if l.lot_number == lot {
                         sel_end = i;
                     } else if selected.contains(&l.lot_number) {
@@ -775,7 +817,7 @@ fn LotItem(token: MaybeToken, lot: Lot, price: f64) -> Element {
                     std::mem::swap(&mut sel_beg, &mut sel_end);
                 }
                 for i in sel_beg..=sel_end {
-                    selected.insert(account.lots[i].lot_number);
+                    selected.insert(lots[i].lot_number);
                 }
             }
         } else if modifiers.meta() {
