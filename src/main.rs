@@ -1037,6 +1037,7 @@ pub fn Disposed() -> Element {
                         th { "Sale Date" }
                         th { "Acq Date" }
                         th { "Amount" }
+                        th { "Income" }
                         th { "Sale Price" }
                         th { "Acq Price" }
                         th { "Cap Gain" }
@@ -1061,6 +1062,12 @@ fn DisposedLotItem(lot: DisposedLot) -> Element {
     let acq_price = f64::try_from(lot.lot.acquisition.price()).unwrap();
     let sale_date = lot.when.to_string();
     let sale_price = f64::try_from(lot.price()).unwrap();
+    let income =
+        if let LotAcquistionKind::EpochReward { epoch: _, slot: _ } = lot.lot.acquisition.kind {
+            acq_price * lot.token.ui_amount(lot.lot.amount)
+        } else {
+            0.0
+        };
     let gain = format!(
         "{}",
         (lot.token.ui_amount(lot.lot.amount) * (sale_price - acq_price))
@@ -1068,6 +1075,7 @@ fn DisposedLotItem(lot: DisposedLot) -> Element {
     );
     let acq_price = format!("${}", acq_price.separated_string_with_fixed_place(2));
     let sale_price = format!("${}", sale_price.separated_string_with_fixed_place(2));
+    let income = format!("${}", income.separated_string_with_fixed_place(2));
     let term = if lot
         .when
         .signed_duration_since(lot.lot.acquisition.when)
@@ -1085,6 +1093,7 @@ fn DisposedLotItem(lot: DisposedLot) -> Element {
             td { class: "lot_date", "{sale_date}" }
             td { class: "lot_date", "{acq_date}" }
             td { class: "lot_amount", "{amount}" }
+            td { "{income}" }
             td { "{sale_price}" }
             td { "{acq_price}" }
             td { "{gain}" }
