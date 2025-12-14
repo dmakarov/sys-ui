@@ -1146,7 +1146,7 @@ pub fn Disposed() -> Element {
                 }
             }
         }
-        DisposedIncome {}
+        DisposedSummary {}
     }
 }
 
@@ -1286,14 +1286,54 @@ fn DisposedLotItem(lot: DisposedLot) -> Element {
 }
 
 #[component]
-pub fn DisposedIncome() -> Element {
+pub fn DisposedSummary() -> Element {
+    let disposed = DB.read().unwrap().disposed_lots();
     let selected = use_context::<GlobalState>().disposed_selected;
-    let mut summary = String::new();
+    let mut summary = format!("Total disposed lots {}", disposed.len());
+    let amount = disposed
+        .iter()
+        .filter(|x| x.token.is_sol())
+        .fold(0, |acc, x| acc + x.lot.amount);
+    let value = disposed
+        .iter()
+        .filter(|x| x.token.is_sol())
+        .fold(0.0, |acc, x| {
+            acc + x.token.ui_amount(x.lot.amount) * f64::try_from(x.price()).unwrap()
+        });
+    let income = disposed
+        .iter()
+        .filter(|x| {
+            if let LotAcquistionKind::EpochReward { epoch: _, slot: _ } =
+                &x.lot.acquisition.kind
+            {
+                true
+            } else {
+                false
+            }
+        })
+        .fold(0.0, |acc, x| {
+            acc + x.token.ui_amount(x.lot.amount)
+                * f64::try_from(x.lot.acquisition.price()).unwrap()
+        });
+    summary = format!(
+        "{} tokens {} value ${} income ${}",
+        summary,
+        MaybeToken::SOL().format_amount(amount),
+        value.separated_string_with_fixed_place(2),
+        income.separated_string_with_fixed_place(2),
+    );
     if !selected.read().is_empty() {
-        let disposed_income = DB
-            .read()
-            .unwrap()
-            .disposed_lots()
+        let amount = disposed
+            .iter()
+            .filter(|x| x.token.is_sol() && selected.read().contains(&x.lot.lot_number))
+            .fold(0, |acc, x| acc + x.lot.amount);
+        let value = disposed
+            .iter()
+            .filter(|x| x.token.is_sol() && selected.read().contains(&x.lot.lot_number))
+            .fold(0.0, |acc, x| {
+                acc + x.token.ui_amount(x.lot.amount) * f64::try_from(x.price()).unwrap()
+            });
+        let income = disposed
             .iter()
             .filter(|x| {
                 if let LotAcquistionKind::EpochReward { epoch: _, slot: _ } =
@@ -1309,8 +1349,12 @@ pub fn DisposedIncome() -> Element {
                     * f64::try_from(x.lot.acquisition.price()).unwrap()
             });
         summary = format!(
-            "Disposed income ${}",
-            disposed_income.separated_string_with_fixed_place(2)
+            "{} selected lots {} tokens {} value ${} income ${}",
+            summary,
+            selected.read().len(),
+            MaybeToken::SOL().format_amount(amount),
+            value.separated_string_with_fixed_place(2),
+            income.separated_string_with_fixed_place(2)
         );
     }
     rsx! {
