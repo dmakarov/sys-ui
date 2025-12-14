@@ -129,6 +129,7 @@ struct GlobalState {
     prices: Signal<BTreeMap<String, f64>>,
     account: Signal<Option<TrackedAccount>>,
     selected: Signal<BTreeSet<usize>>,
+    disposed_selected: Signal<BTreeSet<usize>>,
     xaccount: Signal<Option<(Exchange, String)>>,
     xpmethod: Signal<Option<(Exchange, String)>>,
     xclients: Signal<Option<HashMap<Exchange, Box<dyn ExchangeClient>>>>,
@@ -168,6 +169,7 @@ fn App() -> Element {
         }
     }
     let selected = use_signal(|| BTreeSet::default());
+    let disposed_selected = use_signal(|| BTreeSet::default());
     let log = use_signal(|| None);
     let _global_state = use_context_provider(|| GlobalState {
         state: Signal::new(State {
@@ -181,6 +183,7 @@ fn App() -> Element {
         prices: Signal::new(BTreeMap::default()),
         account: Signal::new(None),
         selected,
+        disposed_selected,
         xaccount: Signal::new(None),
         xpmethod: Signal::new(None),
         xclients: Signal::new(Some(xclients)),
@@ -1143,6 +1146,7 @@ pub fn Disposed() -> Element {
                 }
             }
         }
+        DisposedIncome {}
     }
 }
 
@@ -1179,8 +1183,91 @@ fn DisposedLotItem(lot: DisposedLot) -> Element {
         "L"
     };
 
+    let mut selected = use_context::<GlobalState>().disposed_selected;
+    let kind = if selected.read().contains(&lot.lot.lot_number) {
+        "selected"
+    } else {
+        "regular"
+    };
+    let sorted = use_context::<GlobalState>().state.read().disposed_sorted.clone();
+
+    let select_lot = move |event: Event<MouseData>| {
+        let lot = lot.lot.lot_number;
+        let mut selected = selected.write();
+        let modifiers = event.data().modifiers();
+        if modifiers.shift() {
+            let mut disposed_lots = DB.read().unwrap().disposed_lots().clone();
+            if let Some(sorting) = sorted.clone() {
+                match sorting {
+                    DisposedSorting::Lot(d) => {
+                        disposed_lots.sort_by(|a, b| {
+                            if d {
+                                a.lot.lot_number.cmp(&b.lot.lot_number)
+                            } else {
+                                b.lot.lot_number.cmp(&a.lot.lot_number)
+                            }
+                        });
+                    }
+                    DisposedSorting::SaleDate(d) => {
+                        disposed_lots.sort_by(|a, b| {
+                            if d {
+                                a.when.cmp(&b.when)
+                            } else {
+                                b.when.cmp(&a.when)
+                            }
+                        });
+                    }
+                    DisposedSorting::AcqDate(d) => {
+                        disposed_lots.sort_by(|a, b| {
+                            if d {
+                                a.lot.acquisition.when.cmp(&b.lot.acquisition.when)
+                            } else {
+                                b.lot.acquisition.when.cmp(&a.lot.acquisition.when)
+                            }
+                        });
+                    }
+                    DisposedSorting::Amount(d) => {
+                        disposed_lots.sort_by(|a, b| {
+                            if d {
+                                a.lot.amount.cmp(&b.lot.amount)
+                            } else {
+                                b.lot.amount.cmp(&a.lot.amount)
+                            }
+                        });
+                    }
+                }
+            }
+            let mut sel_end = 0;
+            let mut sel_beg = 0;
+            for (i, l) in disposed_lots.iter().enumerate() {
+                if l.lot.lot_number == lot {
+                    sel_end = i;
+                } else if selected.contains(&l.lot.lot_number) {
+                    sel_beg = i;
+                }
+            }
+            if sel_beg > sel_end {
+                std::mem::swap(&mut sel_beg, &mut sel_end);
+            }
+            for i in sel_beg..=sel_end {
+                selected.insert(disposed_lots[i].lot.lot_number);
+            }
+        } else if modifiers.meta() {
+            if selected.contains(&lot) {
+                selected.remove(&lot);
+            } else {
+                selected.insert(lot);
+            }
+        } else {
+            selected.clear();
+            selected.insert(lot);
+        }
+    };
+
     rsx! {
         tr {
+            class: kind,
+            onclick: select_lot,
             td { class: "lot_number", "{lot_number}" }
             td { class: "lot_date", "{sale_date}" }
             td { class: "lot_date", "{acq_date}" }
@@ -1191,6 +1278,13 @@ fn DisposedLotItem(lot: DisposedLot) -> Element {
             td { "{gain}" }
             td { class: "lot_term", "{term}" }
         }
+    }
+}
+
+#[component]
+pub fn DisposedIncome() -> Element {
+    rsx! {
+        "Disposed income"
     }
 }
 
