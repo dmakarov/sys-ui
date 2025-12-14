@@ -1287,13 +1287,9 @@ fn DisposedLotItem(lot: DisposedLot) -> Element {
 
 #[component]
 pub fn DisposedSummary() -> Element {
-    let disposed = DB.read().unwrap().disposed_lots();
-    let selected = use_context::<GlobalState>().disposed_selected;
-    let mut summary = format!("Total disposed lots {}", disposed.len());
-    let (amount, value, income) =
-        disposed
-            .iter()
-            .filter(|x| x.token.is_sol())
+    fn aggregate(lots: &Vec<DisposedLot>, p: impl Fn(&usize) -> bool) -> (u64, f64, f64) {
+        lots.iter()
+            .filter(|x| x.token.is_sol() && p(&x.lot.lot_number))
             .fold((0, 0.0, 0.0), |acc, x| {
                 (
                     acc.0 + x.lot.amount,
@@ -1308,35 +1304,22 @@ pub fn DisposedSummary() -> Element {
                         acc.2
                     },
                 )
-            });
-    summary = format!(
-        "{} tokens {} value ${} income ${}",
-        summary,
+            })
+    }
+    let disposed = DB.read().unwrap().disposed_lots();
+    let selected = use_context::<GlobalState>().disposed_selected;
+    let (amount, value, income) = aggregate(&disposed, |_| true);
+    let mut summary = format!(
+        "Total disposed lots {} tokens {} value ${} income ${}",
+        disposed.len(),
         MaybeToken::SOL().format_amount(amount),
         value.separated_string_with_fixed_place(2),
         income.separated_string_with_fixed_place(2),
     );
     if !selected.read().is_empty() {
-        let (amount, value, income) = disposed
-            .iter()
-            .filter(|x| x.token.is_sol() && selected.read().contains(&x.lot.lot_number))
-            .fold((0, 0.0, 0.0), |acc, x| {
-                (
-                    acc.0 + x.lot.amount,
-                    acc.1 + x.token.ui_amount(x.lot.amount) * f64::try_from(x.price()).unwrap(),
-                    if let LotAcquistionKind::EpochReward { epoch: _, slot: _ } =
-                        &x.lot.acquisition.kind
-                    {
-                        acc.2
-                            + x.token.ui_amount(x.lot.amount)
-                                * f64::try_from(x.lot.acquisition.price()).unwrap()
-                    } else {
-                        acc.2
-                    },
-                )
-            });
+        let (amount, value, income) = aggregate(&disposed, |a| selected.read().contains(a));
         summary = format!(
-            "{} selected lots {} tokens {} value ${} income ${}",
+            "{}, selected lots {} tokens {} value ${} income ${}",
             summary,
             selected.read().len(),
             MaybeToken::SOL().format_amount(amount),
