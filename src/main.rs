@@ -1189,7 +1189,11 @@ fn DisposedLotItem(lot: DisposedLot) -> Element {
     } else {
         "regular"
     };
-    let sorted = use_context::<GlobalState>().state.read().disposed_sorted.clone();
+    let sorted = use_context::<GlobalState>()
+        .state
+        .read()
+        .disposed_sorted
+        .clone();
 
     let select_lot = move |event: Event<MouseData>| {
         let lot = lot.lot.lot_number;
@@ -1283,8 +1287,34 @@ fn DisposedLotItem(lot: DisposedLot) -> Element {
 
 #[component]
 pub fn DisposedIncome() -> Element {
+    let selected = use_context::<GlobalState>().disposed_selected;
+    let mut summary = String::new();
+    if !selected.read().is_empty() {
+        let disposed_income = DB
+            .read()
+            .unwrap()
+            .disposed_lots()
+            .iter()
+            .filter(|x| {
+                if let LotAcquistionKind::EpochReward { epoch: _, slot: _ } =
+                    &x.lot.acquisition.kind
+                {
+                    selected.read().contains(&x.lot.lot_number)
+                } else {
+                    false
+                }
+            })
+            .fold(0.0, |acc, x| {
+                acc + x.token.ui_amount(x.lot.amount)
+                    * f64::try_from(x.lot.acquisition.price()).unwrap()
+            });
+        summary = format!(
+            "Disposed income ${}",
+            disposed_income.separated_string_with_fixed_place(2)
+        );
+    }
     rsx! {
-        "Disposed income"
+        "{summary}"
     }
 }
 
