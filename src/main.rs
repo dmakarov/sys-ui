@@ -1290,31 +1290,25 @@ pub fn DisposedSummary() -> Element {
     let disposed = DB.read().unwrap().disposed_lots();
     let selected = use_context::<GlobalState>().disposed_selected;
     let mut summary = format!("Total disposed lots {}", disposed.len());
-    let amount = disposed
-        .iter()
-        .filter(|x| x.token.is_sol())
-        .fold(0, |acc, x| acc + x.lot.amount);
-    let value = disposed
-        .iter()
-        .filter(|x| x.token.is_sol())
-        .fold(0.0, |acc, x| {
-            acc + x.token.ui_amount(x.lot.amount) * f64::try_from(x.price()).unwrap()
-        });
-    let income = disposed
-        .iter()
-        .filter(|x| {
-            if let LotAcquistionKind::EpochReward { epoch: _, slot: _ } =
-                &x.lot.acquisition.kind
-            {
-                true
-            } else {
-                false
-            }
-        })
-        .fold(0.0, |acc, x| {
-            acc + x.token.ui_amount(x.lot.amount)
-                * f64::try_from(x.lot.acquisition.price()).unwrap()
-        });
+    let (amount, value, income) =
+        disposed
+            .iter()
+            .filter(|x| x.token.is_sol())
+            .fold((0, 0.0, 0.0), |acc, x| {
+                (
+                    acc.0 + x.lot.amount,
+                    acc.1 + x.token.ui_amount(x.lot.amount) * f64::try_from(x.price()).unwrap(),
+                    if let LotAcquistionKind::EpochReward { epoch: _, slot: _ } =
+                        &x.lot.acquisition.kind
+                    {
+                        acc.2
+                            + x.token.ui_amount(x.lot.amount)
+                                * f64::try_from(x.lot.acquisition.price()).unwrap()
+                    } else {
+                        acc.2
+                    },
+                )
+            });
     summary = format!(
         "{} tokens {} value ${} income ${}",
         summary,
@@ -1323,30 +1317,23 @@ pub fn DisposedSummary() -> Element {
         income.separated_string_with_fixed_place(2),
     );
     if !selected.read().is_empty() {
-        let amount = disposed
+        let (amount, value, income) = disposed
             .iter()
             .filter(|x| x.token.is_sol() && selected.read().contains(&x.lot.lot_number))
-            .fold(0, |acc, x| acc + x.lot.amount);
-        let value = disposed
-            .iter()
-            .filter(|x| x.token.is_sol() && selected.read().contains(&x.lot.lot_number))
-            .fold(0.0, |acc, x| {
-                acc + x.token.ui_amount(x.lot.amount) * f64::try_from(x.price()).unwrap()
-            });
-        let income = disposed
-            .iter()
-            .filter(|x| {
-                if let LotAcquistionKind::EpochReward { epoch: _, slot: _ } =
-                    &x.lot.acquisition.kind
-                {
-                    selected.read().contains(&x.lot.lot_number)
-                } else {
-                    false
-                }
-            })
-            .fold(0.0, |acc, x| {
-                acc + x.token.ui_amount(x.lot.amount)
-                    * f64::try_from(x.lot.acquisition.price()).unwrap()
+            .fold((0, 0.0, 0.0), |acc, x| {
+                (
+                    acc.0 + x.lot.amount,
+                    acc.1 + x.token.ui_amount(x.lot.amount) * f64::try_from(x.price()).unwrap(),
+                    if let LotAcquistionKind::EpochReward { epoch: _, slot: _ } =
+                        &x.lot.acquisition.kind
+                    {
+                        acc.2
+                            + x.token.ui_amount(x.lot.amount)
+                                * f64::try_from(x.lot.acquisition.price()).unwrap()
+                    } else {
+                        acc.2
+                    },
+                )
             });
         summary = format!(
             "{} selected lots {} tokens {} value ${} income ${}",
