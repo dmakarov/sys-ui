@@ -99,6 +99,14 @@ enum Sorting {
     Price(bool),
 }
 
+#[derive(Clone)]
+enum DisposedSorting {
+    Lot(bool),
+    SaleDate(bool),
+    AcqDate(bool),
+    Amount(bool),
+}
+
 #[derive(Clone, Props)]
 struct State {
     pub sorted: Option<Sorting>,
@@ -106,6 +114,7 @@ struct State {
     pub authority: Option<String>,
     pub recipient: Option<String>,
     pub url: Option<String>,
+    pub disposed_sorted: Option<DisposedSorting>,
 }
 
 impl PartialEq for State {
@@ -167,6 +176,7 @@ fn App() -> Element {
             authority: Some(CONFIG.authority_keypair.clone()),
             recipient: None,
             url: Some(CONFIG.json_rpc_url.clone()),
+            disposed_sorted: None,
         }),
         prices: Signal::new(BTreeMap::default()),
         account: Signal::new(None),
@@ -1026,17 +1036,99 @@ pub fn Log() -> Element {
 
 #[component]
 pub fn Disposed() -> Element {
-    let disposed_lots = DB.read().unwrap().disposed_lots();
+    let mut disposed_lots = DB.read().unwrap().disposed_lots().clone();
+    let mut state = use_context::<GlobalState>().state;
+
+    if let Some(ref sorting) = state.read().disposed_sorted {
+        match *sorting {
+            DisposedSorting::Lot(d) => {
+                disposed_lots.sort_by(|a, b| {
+                    if d {
+                        a.lot.lot_number.cmp(&b.lot.lot_number)
+                    } else {
+                        b.lot.lot_number.cmp(&a.lot.lot_number)
+                    }
+                });
+            }
+            DisposedSorting::SaleDate(d) => {
+                disposed_lots.sort_by(|a, b| {
+                    if d {
+                        a.when.cmp(&b.when)
+                    } else {
+                        b.when.cmp(&a.when)
+                    }
+                });
+            }
+            DisposedSorting::AcqDate(d) => {
+                disposed_lots.sort_by(|a, b| {
+                    if d {
+                        a.lot.acquisition.when.cmp(&b.lot.acquisition.when)
+                    } else {
+                        b.lot.acquisition.when.cmp(&a.lot.acquisition.when)
+                    }
+                });
+            }
+            DisposedSorting::Amount(d) => {
+                disposed_lots.sort_by(|a, b| {
+                    if d {
+                        a.lot.amount.cmp(&b.lot.amount)
+                    } else {
+                        b.lot.amount.cmp(&a.lot.amount)
+                    }
+                });
+            }
+        }
+    }
 
     rsx! {
         div { id: "disposed",
             table {
                 thead {
                     tr {
-                        th { "Lot" }
-                        th { "Sale Date" }
-                        th { "Acq Date" }
-                        th { "Amount" }
+                        th {
+                            onclick: move |_| {
+                                let sorted = state.read().disposed_sorted.clone();
+                                let mut v = true;
+                                if let Some(DisposedSorting::Lot(x)) = sorted {
+                                    v = !x;
+                                }
+                                state.write().disposed_sorted = Some(DisposedSorting::Lot(v));
+                            },
+                            "Lot"
+                        }
+                        th {
+                            onclick: move |_| {
+                                let sorted = state.read().disposed_sorted.clone();
+                                let mut v = true;
+                                if let Some(DisposedSorting::SaleDate(x)) = sorted {
+                                    v = !x;
+                                }
+                                state.write().disposed_sorted = Some(DisposedSorting::SaleDate(v));
+                            },
+                            "Sale Date"
+                        }
+                        th {
+                            onclick: move |_| {
+                                let sorted = state.read().disposed_sorted.clone();
+                                let mut v = true;
+                                if let Some(DisposedSorting::AcqDate(x)) = sorted {
+                                    v = !x;
+                                }
+                                state.write().disposed_sorted = Some(DisposedSorting::AcqDate(v));
+                            },
+                            "Acq Date"
+                        }
+                        th {
+                            onclick: move |_| {
+                                let sorted = state.read().disposed_sorted.clone();
+                                let mut v = true;
+                                if let Some(DisposedSorting::Amount(x)) = sorted {
+                                    v = !x;
+                                }
+                                state.write().disposed_sorted = Some(DisposedSorting::Amount(v));
+                            },
+                            "Amount"
+                        }
                         th { "Income" }
                         th { "Sale Price" }
                         th { "Acq Price" }
