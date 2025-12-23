@@ -1287,48 +1287,72 @@ fn DisposedLotItem(lot: DisposedLot) -> Element {
 
 #[component]
 pub fn DisposedSummary() -> Element {
-    fn aggregate(lots: &Vec<DisposedLot>, p: impl Fn(&usize) -> bool) -> (u64, f64, f64) {
+    fn aggregate(lots: &Vec<DisposedLot>, p: impl Fn(&usize) -> bool) -> (u64, f64, f64, f64, f64) {
         lots.iter()
             .filter(|x| x.token.is_sol() && p(&x.lot.lot_number))
-            .fold((0, 0.0, 0.0), |acc, x| {
+            .fold((0u64, 0f64, 0f64, 0f64, 0f64), |acc, x| {
+                let amount = x.token.ui_amount(x.lot.amount);
+                let basis = amount * x.lot.acquisition.price().to_f64().unwrap();
+                let value = amount * x.price().to_f64().unwrap();
                 (
                     acc.0 + x.lot.amount,
-                    acc.1 + x.token.ui_amount(x.lot.amount) * f64::try_from(x.price()).unwrap(),
+                    acc.1 + amount * f64::try_from(x.price()).unwrap(),
                     if let LotAcquistionKind::EpochReward { epoch: _, slot: _ } =
                         &x.lot.acquisition.kind
                     {
-                        acc.2
-                            + x.token.ui_amount(x.lot.amount)
-                                * f64::try_from(x.lot.acquisition.price()).unwrap()
+                        acc.2 + amount * f64::try_from(x.lot.acquisition.price()).unwrap()
                     } else {
                         acc.2
+                    },
+                    if x.when
+                        .signed_duration_since(x.lot.acquisition.when)
+                        .num_days()
+                        < 365
+                    {
+                        acc.3 + value - basis
+                    } else {
+                        acc.3
+                    },
+                    if x.when
+                        .signed_duration_since(x.lot.acquisition.when)
+                        .num_days()
+                        < 365
+                    {
+                        acc.4
+                    } else {
+                        acc.4 + value - basis
                     },
                 )
             })
     }
     let disposed = DB.read().unwrap().disposed_lots();
     let selected = use_context::<GlobalState>().disposed_selected;
-    let (amount, value, income) = aggregate(&disposed, |_| true);
+    let (amount, value, income, short_gain, long_gain) = aggregate(&disposed, |_| true);
     let mut summary = format!(
-        "Total disposed lots {} tokens {} value ${} income ${}",
+        "Total disposed lots {} tokens {} value ${} income ${} short-term gain ${} long-term gain ${}",
         disposed.len(),
         MaybeToken::SOL().format_amount(amount),
         value.separated_string_with_fixed_place(2),
         income.separated_string_with_fixed_place(2),
+        short_gain.separated_string_with_fixed_place(2),
+        long_gain.separated_string_with_fixed_place(2),
     );
     if !selected.read().is_empty() {
-        let (amount, value, income) = aggregate(&disposed, |a| selected.read().contains(a));
+        let (amount, value, income, short_gain, long_gain) =
+            aggregate(&disposed, |a| selected.read().contains(a));
         summary = format!(
-            "{}, selected lots {} tokens {} value ${} income ${}",
+            "{}\n      selected lots {} tokens {} value ${} income ${} short-term gain ${} long-term gain ${}",
             summary,
             selected.read().len(),
             MaybeToken::SOL().format_amount(amount),
             value.separated_string_with_fixed_place(2),
-            income.separated_string_with_fixed_place(2)
+            income.separated_string_with_fixed_place(2),
+            short_gain.separated_string_with_fixed_place(2),
+            long_gain.separated_string_with_fixed_place(2),
         );
     }
     rsx! {
-        "{summary}"
+        pre {"{summary}"}
     }
 }
 
