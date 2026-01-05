@@ -1158,12 +1158,12 @@ fn DisposedLotItem(lot: DisposedLot) -> Element {
     let acq_price = f64::try_from(lot.lot.acquisition.price()).unwrap();
     let sale_date = lot.when.to_string();
     let sale_price = f64::try_from(lot.price()).unwrap();
-    let income =
-        if let LotAcquistionKind::EpochReward { epoch: _, slot: _ } = lot.lot.acquisition.kind {
+    let income = match lot.lot.acquisition.kind {
+        LotAcquistionKind::NotAvailable | LotAcquistionKind::EpochReward { epoch: _, slot: _ } => {
             acq_price * lot.token.ui_amount(lot.lot.amount)
-        } else {
-            0.0
-        };
+        }
+        _ => 0.0,
+    };
     let gain = format!(
         "{}",
         (lot.token.ui_amount(lot.lot.amount) * (sale_price - acq_price))
@@ -1288,9 +1288,9 @@ fn DisposedLotItem(lot: DisposedLot) -> Element {
 #[component]
 pub fn DisposedSummary() -> Element {
     fn aggregate(lots: &Vec<DisposedLot>, p: impl Fn(&usize) -> bool) -> (u64, f64, f64, f64, f64) {
-        lots.iter()
-            .filter(|x| p(&x.lot.lot_number))
-            .fold((0u64, 0f64, 0f64, 0f64, 0f64), |acc, x| {
+        lots.iter().filter(|x| p(&x.lot.lot_number)).fold(
+            (0u64, 0f64, 0f64, 0f64, 0f64),
+            |acc, x| {
                 let amount = x.token.ui_amount(x.lot.amount);
                 let basis = amount * x.lot.acquisition.price().to_f64().unwrap();
                 let value = amount * x.price().to_f64().unwrap();
@@ -1301,12 +1301,12 @@ pub fn DisposedSummary() -> Element {
                         acc.0
                     },
                     acc.1 + amount * f64::try_from(x.price()).unwrap(),
-                    if let LotAcquistionKind::EpochReward { epoch: _, slot: _ } =
-                        &x.lot.acquisition.kind
-                    {
-                        acc.2 + amount * f64::try_from(x.lot.acquisition.price()).unwrap()
-                    } else {
-                        acc.2
+                    match &x.lot.acquisition.kind {
+                        LotAcquistionKind::NotAvailable
+                        | LotAcquistionKind::EpochReward { epoch: _, slot: _ } => {
+                            acc.2 + amount * f64::try_from(x.lot.acquisition.price()).unwrap()
+                        }
+                        _ => acc.2,
                     },
                     if x.when
                         .signed_duration_since(x.lot.acquisition.when)
@@ -1327,7 +1327,8 @@ pub fn DisposedSummary() -> Element {
                         acc.4 + value - basis
                     },
                 )
-            })
+            },
+        )
     }
     let disposed = DB.read().unwrap().disposed_lots();
     let selected = use_context::<GlobalState>().disposed_selected;
