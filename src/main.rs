@@ -1289,13 +1289,17 @@ fn DisposedLotItem(lot: DisposedLot) -> Element {
 pub fn DisposedSummary() -> Element {
     fn aggregate(lots: &Vec<DisposedLot>, p: impl Fn(&usize) -> bool) -> (u64, f64, f64, f64, f64) {
         lots.iter()
-            .filter(|x| x.token.is_sol() && p(&x.lot.lot_number))
+            .filter(|x| p(&x.lot.lot_number))
             .fold((0u64, 0f64, 0f64, 0f64, 0f64), |acc, x| {
                 let amount = x.token.ui_amount(x.lot.amount);
                 let basis = amount * x.lot.acquisition.price().to_f64().unwrap();
                 let value = amount * x.price().to_f64().unwrap();
                 (
-                    acc.0 + x.lot.amount,
+                    if x.token.is_sol() {
+                        acc.0 + x.lot.amount
+                    } else {
+                        acc.0
+                    },
                     acc.1 + amount * f64::try_from(x.price()).unwrap(),
                     if let LotAcquistionKind::EpochReward { epoch: _, slot: _ } =
                         &x.lot.acquisition.kind
