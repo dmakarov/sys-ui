@@ -1,6 +1,5 @@
 use {
     chrono::prelude::*,
-    clap::Arg,
     dioxus::prelude::*,
     rust_decimal::prelude::*,
     separator::FixedPlaceSeparatable,
@@ -22,7 +21,6 @@ use {
         notifier::*,
         priority_fee::PriorityFee,
         process::*,
-        rpc_client_utils::get_signature_date,
         token::*,
         RpcClients,
     },
@@ -1374,7 +1372,7 @@ macro_rules! make_arg_matches {
     {$name:expr, $value:ident, $func:ident} => {
         clap::App::new("sys")
             .arg(
-                Arg::with_name($name)
+                clap::Arg::with_name($name)
                     .long($name)
                     .takes_value(true)
                     .validator($func),
@@ -2006,7 +2004,7 @@ pub async fn process_stake_withdraw<T: Signers, W: Write>(
         return Err("Withdraw failed".into());
     }
     writeln!(writer, "Withdraw confirmed: {signature}")?;
-    let when = get_signature_date(rpc_client, signature).await?;
+    let when = sys::rpc_client_utils::get_signature_date(rpc_client, signature).await?;
     db.confirm_transfer(signature, when)?;
     if withdraw_all {
         let stake_account = db.get_account(stake_address, MaybeToken::SOL()).unwrap();
