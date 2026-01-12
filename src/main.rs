@@ -191,6 +191,7 @@ fn App() -> Element {
     });
 
     let mut prices = use_context::<GlobalState>().prices;
+    let xclients = use_context::<GlobalState>().xclients;
     use_coroutine(move |_rx: UnboundedReceiver<Action>| async move {
         let mut tokens = vec![MaybeToken::from(None)];
         tokens.append(
@@ -201,9 +202,11 @@ fn App() -> Element {
         );
         loop {
             let rpc = RPC.read().unwrap();
+            let xclients = xclients.read();
+            let exchange_client = xclients.as_ref().unwrap().get(&Exchange::Coinbase).unwrap();
             for token in tokens.iter() {
                 let price = token
-                    .get_current_price(&rpc.default())
+                    .get_spot_price(exchange_client.as_ref(), None)
                     .await
                     .map(|x| format!("{x:.6}").trim().parse::<f64>().unwrap())
                     .unwrap_or(0f64);
@@ -254,9 +257,13 @@ pub fn Menu() -> Element {
     let sync = move |_| {
         spawn(async move {
             let mut buffer = std::io::BufWriter::new(Vec::new());
+            let xclients = use_context::<GlobalState>().xclients;
+            let xclients = xclients.read();
+            let exchange_client = xclients.as_ref().unwrap().get(&Exchange::Coinbase).unwrap();
             match process_account_sync(
                 &mut DB.write().unwrap(),
                 &RPC.read().unwrap(),
+                exchange_client.as_ref(),
                 address,
                 None,
                 false,
@@ -1742,9 +1749,13 @@ async fn do_swap(selected_account: &mut Signal<Option<TrackedAccount>>, state: &
     let priority_fee = PriorityFee::default_auto();
     let notifier = Notifier::default();
     let mut buffer = std::io::BufWriter::new(Vec::new());
+    let xclients = use_context::<GlobalState>().xclients;
+    let xclients = xclients.read();
+    let exchange_client = xclients.as_ref().unwrap().get(&Exchange::Coinbase).unwrap();
     match process_jup_swap(
         &mut db,
         &rpc,
+        exchange_client.as_ref(),
         address,
         from_token,
         to_token,
